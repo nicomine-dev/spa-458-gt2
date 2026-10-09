@@ -26,7 +26,7 @@ def fmt(ms):
 
 def new_lap(number):
     return {'n': number, 'time': None, 'complete': False, 'valid': True, 'pit': False, 'tyresOutMax': 0,
-            's': {k: [] for k in ('t', 'p', 'x', 'z', 'v', 'g', 'rpm', 'thr', 'brk', 'steer')}}
+            's': {k: [] for k in ('t', 'p', 'x', 'z', 'v', 'g', 'rpm', 'thr', 'brk', 'steer', 'out')}}
 
 
 def main():
@@ -34,11 +34,18 @@ def main():
     st = sm.static()
     track, layout, car = st.track, st.trackConfiguration, st.carModel
     os.makedirs(OUT_DIR, exist_ok=True)
-    name = f'{datetime.now():%Y-%m-%d_%H%M}_{track}{"-" + layout if layout else ""}_{car}.json'
-    path = os.path.join(OUT_DIR, name)
-    session = {'track': track, 'layout': layout, 'car': car, 'player': st.playerNick or st.playerName,
-               'splineLength': round(st.trackSPlineLength, 1), 'started': datetime.now().isoformat(timespec='seconds'),
-               'laps': []}
+    suffix = f'_{track}{"-" + layout if layout else ""}_{car}.json'
+    # si la última sesión es de esta pista y este auto y se tocó hace menos de 30 min, se sigue en el mismo archivo
+    prev = sorted((f for f in os.listdir(OUT_DIR) if f.endswith(suffix)), key=lambda f: os.path.getmtime(os.path.join(OUT_DIR, f)))
+    if prev and time.time() - os.path.getmtime(os.path.join(OUT_DIR, prev[-1])) < 1800:
+        path = os.path.join(OUT_DIR, prev[-1])
+        session = json.load(open(path, encoding='utf-8'))
+        print(f"Sigo la sesión anterior ({len(session['laps'])} vueltas ya grabadas).", flush=True)
+    else:
+        path = os.path.join(OUT_DIR, f'{datetime.now():%Y-%m-%d_%H%M}{suffix}')
+        session = {'track': track, 'layout': layout, 'car': car, 'player': st.playerNick or st.playerName,
+                   'splineLength': round(st.trackSPlineLength, 1), 'started': datetime.now().isoformat(timespec='seconds'),
+                   'laps': []}
     print(f'Grabando {track} con {car} -> {path}\nCtrl+C para terminar.', flush=True)
 
     def save():
@@ -80,6 +87,7 @@ def main():
             s['thr'].append(round(p.gas, 3))
             s['brk'].append(round(p.brake, 3))
             s['steer'].append(round(p.steerAngle, 3))
+            s['out'].append(p.numberOfTyresOut)                # ruedas afuera de la pista en ese instante
             lap['tyresOutMax'] = max(lap['tyresOutMax'], p.numberOfTyresOut)
             if p.numberOfTyresOut > 2:
                 lap['valid'] = False

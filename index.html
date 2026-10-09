@@ -214,6 +214,19 @@ h1 span { color: var(--accent); }
 .mine-head span { font: 12px var(--mono); color: var(--faint); }
 .file { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
 .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.mine h3 { margin: 4px 0 0; font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.loss.compact { min-width: 0; }
+.loss tr[aria-selected="true"] td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.loss tr[aria-selected="true"] td:first-child { color: var(--accent); }
+.loss .ref td { color: var(--muted); }
+.loss .ref td:first-child { color: var(--muted); }
+.tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; font: 600 10px var(--display); letter-spacing: .1em; text-transform: uppercase; vertical-align: 2px; }
+.tag.ok { background: color-mix(in srgb, var(--throttle) 18%, transparent); color: var(--throttle); }
+.tag.bad { background: color-mix(in srgb, var(--brake) 16%, transparent); color: var(--brake); }
+.tag.top { background: var(--accent); color: #111; }
+.cell-best { color: var(--accent); font-weight: 600; }
+.loss.matrix td, .loss.matrix th { text-align: right; }
+.loss.matrix td:first-child, .loss.matrix th:first-child { text-align: left; }
 .laps { display: flex; flex-wrap: wrap; gap: 8px; }
 .lap { display: grid; gap: 2px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; text-align: left; }
 .lap:hover { border-color: var(--edge); }
@@ -411,9 +424,11 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
       <span id="recMeta">sin grabación</span>
       <label class="ghost file">Cargar sesión…<input type="file" id="recFile" accept=".json,application/json"></label>
     </div>
-    <div class="laps" id="laps"></div>
+    <div class="loss-wrap"><table class="loss compact" id="laps"></table></div>
     <p class="summary" id="summary"></p>
     <div class="loss-wrap"><table class="loss" id="loss"></table></div>
+    <h3 id="matrixTitle" hidden>Tiempo por curva en cada vuelta</h3>
+    <div class="loss-wrap"><table class="loss matrix" id="matrix"></table></div>
   </section>
 
   <footer class="notes">
@@ -794,7 +809,7 @@ let opts = { ...BASE }, mode = 'theory', showGhost = true, vsMode = 'human';
 let SIMS = {}, SIM = null, OTHER = null, baseLaps = null;
 // contra qué se compara: lo elegido, salvo que sea la misma vuelta que se está viendo
 const other = m => {
-  if (vsMode !== m && SIMS[vsMode] && !(m === 'mine' && vsMode === 'best' && SIMS.mine === SIMS.best)) return vsMode;
+  if (vsMode !== m && SIMS[vsMode] && !(m === 'mine' && SIMS.mine === SIMS[vsMode])) return vsMode;
   return m === 'human' ? 'theory' : 'human';
 };
 const RECORDING = window.MIS_VUELTAS || null;   // tu última sesión grabada: mis-vueltas.js, lo escribe build.py (no va al repo)
@@ -886,6 +901,7 @@ function runSim(keepDist) {
   SIMS = { ...SIMS, theory: simulateLap(G, CAR_458, simOpts('theory')), human: simulateLap(G, CAR_458, simOpts('human')) };
   if (!baseLaps) baseLaps = { theory: SIMS.theory.lapTime, human: SIMS.human.lapTime };
   applyMode(keepDist ? d : null, L0);
+  if (REC) renderLaps();      // las diferencias contra las trazadas cambian con la puesta a punto
   scheduleBestWing();
 }
 function applyMode(d, L0) {
@@ -950,42 +966,101 @@ function lapToRun(lap) {
 }
 
 let REC = null, recLap = null;
+const lapKey = n => 'lap' + n;
 function loadRecording(rec) {
   const laps = (rec.laps || []).filter(l => l.complete && l.time > 0 && l.s && l.s.p.length > 50);
   if (!laps.length) { REC = null; renderLaps(); return false; }
+  // borra las vueltas de una sesión anterior
+  for (const k of Object.keys(SIMS)) if (k.startsWith('lap')) { delete SIMS[k]; delete MODE_NAME[k]; }
   REC = { ...rec, laps };
+  for (const l of laps) {
+    SIMS[lapKey(l.n)] = lapToRun(l);
+    MODE_NAME[lapKey(l.n)] = `vuelta ${l.n}`;
+  }
   const valid = laps.filter(l => l.valid);
   const bestLap = (valid.length ? valid : laps).reduce((a, b) => b.time < a.time ? b : a);
-  SIMS.best = lapToRun(bestLap); SIMS.best.lapN = bestLap.n;
   REC.bestN = bestLap.n;
-  selectLap(bestLap.n, true);
+  SIMS.best = SIMS[lapKey(bestLap.n)];
+  MODE_NAME.best = valid.length ? 'tu mejor' : 'tu mejor (inválida)';
+  // "Comparar con": las trazadas y cada una de tus vueltas
+  const vs = $('vs');
+  vs.querySelectorAll('[data-lap]').forEach(b => b.remove());
+  for (const l of laps) {
+    const b = document.createElement('button');
+    b.dataset.v = lapKey(l.n); b.dataset.lap = l.n; b.textContent = `V${l.n}`;
+    b.setAttribute('aria-pressed', String(vsMode === b.dataset.v));
+    vs.appendChild(b);
+  }
+  vs.querySelector('[data-v="best"]').hidden = false;
   document.querySelector('#mode [data-v="mine"]').hidden = false;
-  document.querySelector('#vs [data-v="best"]').hidden = false;
+  selectLap(bestLap.n, true);
   return true;
 }
 function selectLap(n, silent) {
-  const lap = REC.laps.find(l => l.n === n);
-  if (!lap) return;
+  if (!REC || !SIMS[lapKey(n)]) return;
   recLap = n;
-  SIMS.mine = n === REC.bestN ? SIMS.best : lapToRun(lap);
+  SIMS.mine = SIMS[lapKey(n)];
   renderLaps();
   if (!silent || mode === 'mine') { if (mode !== 'mine') setMode('mine'); else applyMode(curDist(), lapLen()); }
 }
+// tiempos por tramo (cada tramo arranca 150 m antes de una curva e incluye su salida)
+const SEG_CORNERS = CORNERS.filter(k => !k.straight);
+const SEG_BOUNDS = SEG_CORNERS.map(k => ((k.a - 150) % G.length + G.length) % G.length);
+function segTimes(R) {
+  if (R._seg) return R._seg;
+  R._seg = SEG_CORNERS.map((k, j) => {
+    const a = tAt(R, SEG_BOUNDS[j]), b = tAt(R, SEG_BOUNDS[(j + 1) % SEG_CORNERS.length]);
+    return b >= a ? b - a : b + R.lapTime - a;
+  });
+  return R._seg;
+}
+const signed = (x, dec = 3) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(dec)}`;
 function renderLaps() {
-  const box = $('laps');
+  const table = $('laps');
   if (!REC) {
     $('recMeta').textContent = 'sin grabación';
-    box.innerHTML = '';
-    $('summary').innerHTML = '';
-    $('loss').innerHTML = '';
-    $('summary').outerHTML = `<p class="empty" id="summary">Todavía no hay vueltas tuyas. Con el juego abierto corré <code>python tools/record.py</code>, da unas vueltas y volvé a generar la página (<code>python tools/build.py -50</code>), o cargá el archivo de <code>recordings/</code> con “Cargar sesión…”.</p>`;
+    table.innerHTML = ''; $('loss').innerHTML = ''; $('matrix').innerHTML = ''; $('matrixTitle').hidden = true;
+    const s = $('summary');
+    s.className = 'empty';
+    s.innerHTML = `Todavía no hay vueltas tuyas. Con el juego abierto corré <code>python tools/record.py</code>, da unas vueltas y volvé a generar la página (<code>python tools/build.py -50</code>), o cargá el archivo de <code>recordings/</code> con “Cargar sesión…”.`;
     return;
   }
   const nValid = REC.laps.filter(l => l.valid).length;
   $('recMeta').textContent = `${(REC.started || '').replace('T', ' ').slice(0, 16)} · ${REC.track} · ${REC.car} · ${REC.laps.length} vueltas (${nValid} válidas)`;
-  box.innerHTML = REC.laps.map(l => `<button type="button" class="lap${l.n === REC.bestN ? ' best' : ''}${l.valid ? '' : ' bad'}" data-n="${l.n}" aria-pressed="${l.n === recLap}">
-    <span>${l.n === REC.bestN ? 'Mejor · ' : ''}Vuelta ${l.n}${l.valid ? '' : ' · inválida'}</span><b>${fmtLap(l.time / 1000)}</b></button>`).join('');
-  box.querySelectorAll('.lap').forEach(b => b.addEventListener('click', () => selectLap(+b.dataset.n)));
+  const T = SIMS.theory.lapTime, H = SIMS.human.lapTime, B = SIMS.best.lapTime;
+  const cls = x => x > 0.0005 ? 'worse' : x < -0.0005 ? 'better' : '';
+  // 1 · cada vuelta contra todas las trazadas
+  table.innerHTML = `<thead><tr><th>Vuelta</th><th>Tiempo</th><th>vs teórica</th><th>vs humana</th><th>vs tu mejor</th></tr></thead><tbody>`
+    + REC.laps.map(l => {
+      const s = l.time / 1000;
+      const tag = l.n === REC.bestN ? '<span class="tag top">mejor</span>' : '';
+      const ok = l.valid ? '<span class="tag ok">válida</span>' : '<span class="tag bad">inválida</span>';
+      return `<tr data-n="${l.n}" aria-selected="${l.n === recLap}"><td>Vuelta ${l.n}${tag}${ok}</td><td>${fmtLap(s)}</td>
+        <td class="${cls(s - T)}">${signed(s - T)}</td><td class="${cls(s - H)}">${signed(s - H)}</td>
+        <td class="${cls(s - B)}">${l.n === REC.bestN ? '—' : signed(s - B)}</td></tr>`;
+    }).join('')
+    + `<tr class="ref"><td>Humana (referencia)</td><td>${fmtLap(H)}</td><td>${signed(H - T)}</td><td>—</td><td>${signed(H - B)}</td></tr>`
+    + `<tr class="ref"><td>Teórica (referencia)</td><td>${fmtLap(T)}</td><td>—</td><td>${signed(T - H)}</td><td>${signed(T - B)}</td></tr></tbody>`;
+  table.querySelectorAll('tbody tr[data-n]').forEach(tr => tr.addEventListener('click', () => selectLap(+tr.dataset.n)));
+
+  // 2 · tiempo por curva en cada vuelta, con las trazadas y tu vuelta ideal (tus mejores tramos sumados)
+  const runs = REC.laps.map(l => ({ name: `V${l.n}`, R: SIMS[lapKey(l.n)] }));
+  const segs = runs.map(r => segTimes(r.R));
+  const hum = segTimes(SIMS.human), teo = segTimes(SIMS.theory);
+  const bestSeg = SEG_CORNERS.map((_, j) => Math.min(...segs.map(s => s[j])));
+  const ideal = bestSeg.reduce((a, b) => a + b, 0);
+  $('matrixTitle').hidden = false;
+  $('matrix').innerHTML = `<thead><tr><th>Curva</th>${runs.map(r => `<th>${r.name}</th>`).join('')}<th>Tu ideal</th><th>Humana</th><th>Teórica</th><th>Ideal vs humana</th></tr></thead><tbody>`
+    + SEG_CORNERS.map((k, j) => `<tr data-d="${SEG_BOUNDS[j]}"><td>${k.name}</td>`
+      + segs.map(s => `<td class="${runs.length > 1 && s[j] === bestSeg[j] ? 'cell-best' : ''}">${s[j].toFixed(2)}</td>`).join('')
+      + `<td>${bestSeg[j].toFixed(2)}</td><td>${hum[j].toFixed(2)}</td><td>${teo[j].toFixed(2)}</td>`
+      + `<td class="${cls(bestSeg[j] - hum[j])}">${signed(bestSeg[j] - hum[j], 2)}</td></tr>`).join('')
+    + `</tbody><tfoot><tr><td>Vuelta</td>${runs.map(r => `<td>${fmtLap(r.R.lapTime)}</td>`).join('')}<td class="cell-best">${fmtLap(ideal)}</td>`
+    + `<td>${fmtLap(SIMS.human.lapTime)}</td><td>${fmtLap(SIMS.theory.lapTime)}</td><td class="${cls(ideal - SIMS.human.lapTime)}">${signed(ideal - SIMS.human.lapTime, 2)}</td></tr></tfoot>`;
+  $('matrix').querySelectorAll('tbody tr').forEach(tr => tr.addEventListener('click', () => {
+    seekDist(+tr.dataset.d);
+    $('map').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  }));
 }
 
 // tiempo de una vuelta en una distancia de la pista
