@@ -1,0 +1,15 @@
+[
+  { "n": "T1",     "name": "La Source",   "ref": 380 },
+  { "n": "T2–4",   "name": "Eau Rouge",   "ref": 1130 },
+  { "n": "T5–6",   "name": "Les Combes",  "ref": 2422 },
+  { "n": "T7",     "name": "Malmedy",     "ref": 2601 },
+  { "n": "T8",     "name": "Rivage",      "ref": 3041 },
+  { "n": "T9",     "name": "Bruxelles",   "ref": 3245 },
+  { "n": "T10–11", "name": "Pouhon",      "ref": 3845 },
+  { "n": "T12–13", "name": "Les Fagnes",  "ref": 4502 },
+  { "n": "T14",    "name": "Campus",      "ref": 4930 },
+  { "n": "T15",    "name": "Stavelot",    "ref": 5119 },
+  { "n": "T16",    "name": "Paul Frère",  "ref": 5480 },
+  { "n": "T17",    "name": "Blanchimont", "ref": 6140 },
+  { "n": "T18–19", "name": "Chicane",     "ref": 6705 }
+]

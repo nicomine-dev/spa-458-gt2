@@ -22,13 +22,35 @@ Atajos: `Espacio` pausa · `←` `→` ±1 s · `1`–`5` velocidad · `F` segui
 
 Assetto Corsa y sus contenidos son de Kunos Simulazioni. Proyecto personal sin fines comerciales.
 
+## App para Assetto Corsa (CSP)
+
+`cm-app/Trazada` es una app de Lua para Custom Shaders Patch. En carrera muestra:
+
+- el mapa con la trazada de referencia coloreada por pedales (verde, gris, rojo con su intensidad) y tu auto como un punto relleno con lo que estás pisando vos;
+- la próxima curva, los metros que faltan al punto de giro y los carteles 200 / 150 / 100 / 50 que se encienden al pasarlos, con un aviso **FRENÁ** en el punto de frenada de referencia;
+- tu velocidad y marcha junto a las de referencia;
+- una franja con los próximos 300 m de pedales.
+
+Se puede elegir referencia humana o teórica y mapa siguiendo al auto (gira con el rumbo) o pista completa.
+
+**Instalar:** copiar la carpeta `cm-app/Trazada` a `assettocorsa/apps/lua/` y abrirla desde la barra de apps del juego. Requiere CSP; está escrita contra la API de CSP 0.2.7.
+
+**Otras pistas:** la app detecta la pista en la que estás y busca `data/<pista>.json` (o `data/<pista>-<layout>.json`). Para generar uno:
+
+```sh
+python tools/export.py <pista> [layout]     # extrae la línea AI a tools/<pista>_line.json
+node tools/build_app.js <pista> [rotación]  # simula y escribe cm-app/Trazada/data/<pista>.json
+```
+
+Si existe `tools/corners/<pista>.json` usa esos nombres de curva; si no, detecta las curvas sola y las numera. Las velocidades y pedales de referencia se calculan con la física del 458 GT2: con otro auto la app lo avisa.
+
 ## Regenerar
 
 Las fuentes están en `tools/`:
 
 ```sh
+python tools/export.py      # extrae la línea AI de Spa a tools/spa_line.json
 python tools/build.py -50   # arma index.html (-50 = rotación del mapa en grados)
+node tools/build_app.js spa # datos de Spa para la app
 node tools/test.js          # imprime tiempo de vuelta y velocidades por curva
 ```
-
-`tools/export.py` vuelve a extraer `spa_line.json` desde `fast_lane.ai` (ajustar la ruta del juego).

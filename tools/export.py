@@ -1,23 +1,40 @@
-import struct,json,math
-d=open(r"E:/Programas/Steam/steamapps/common/assettocorsa/content/tracks/spa/ai/fast_lane.ai",'rb').read()
-n=struct.unpack_from('<i',d,4)[0]
-pts=[struct.unpack_from('<4fi',d,16+20*i) for i in range(n)]
-off=16+20*n+4
-ex=[struct.unpack_from('<18f',d,off+72*i) for i in range(n)]
-# check side convention at a tight corner: compute signed curvature and compare sides
-X=[p[0] for p in pts];Z=[p[2] for p in pts]
-def head(i): j=(i+3)%n;k=(i-3)%n; return math.atan2(Z[j]-Z[k],X[j]-X[k])
-res=[]
-for i in range(0,n,1):
-    a=head((i+4)%n)-head((i-4)%n); a=(a+math.pi)%(2*math.pi)-math.pi
-    res.append(a)
-# tightest few corners
-idx=sorted(range(n),key=lambda i:-abs(res[i]))[:1]
-for i in sorted(set(i//100*100 for i in sorted(range(n),key=lambda i:-abs(res[i]))[:400])):
-    pass
-for i in [int(n*f) for f in (0.04,0.05,0.06)]+idx:
-    print(i,round(pts[i][3]),'dtheta',round(res[i],3),'L',round(ex[i][5],2),'R',round(ex[i][6],2),'radius',round(ex[i][4],1))
-out={'x':[round(p[0],2) for p in pts],'y':[round(p[1],2) for p in pts],'z':[round(p[2],2) for p in pts],
- 'l':[round(e[5],2) for e in ex],'r':[round(e[6],2) for e in ex]}
-json.dump(out,open('spa_line.json','w'),separators=(',',':'))
-import os;print(os.path.getsize('spa_line.json'))
+"""Extrae la línea AI (fast_lane.ai) de una pista de Assetto Corsa a JSON.
+
+Uso:
+  python tools/export.py                          -> Spa, escribe tools/spa_line.json
+  python tools/export.py <pista> [layout] [salida.json] [carpeta_de_assettocorsa]
+
+Formato de fast_lane.ai (versión 7): encabezado de 4 int32 (versión, puntos, tiempo, muestras),
+luego cada punto como x, y, z, distancia (float) + id (int32), y un bloque extra de 18 floats por
+punto donde los campos 5 y 6 son la distancia de la línea al borde izquierdo y derecho.
+"""
+import json
+import os
+import struct
+import sys
+
+AC_DEFAULT = r'E:/Programas/Steam/steamapps/common/assettocorsa'
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+track = sys.argv[1] if len(sys.argv) > 1 else 'spa'
+layout = sys.argv[2] if len(sys.argv) > 2 else ''
+name = f'{track}-{layout}' if layout else track
+out = sys.argv[3] if len(sys.argv) > 3 else os.path.join(HERE, f'{name}_line.json')
+ac_root = sys.argv[4] if len(sys.argv) > 4 else AC_DEFAULT
+
+base = os.path.join(ac_root, 'content', 'tracks', track, layout)
+data = open(os.path.join(base, 'ai', 'fast_lane.ai'), 'rb').read()
+version, n = struct.unpack_from('<2i', data, 0)
+pts = [struct.unpack_from('<4fi', data, 16 + 20 * i) for i in range(n)]
+off = 16 + 20 * n + 4
+extra = [struct.unpack_from('<18f', data, off + 72 * i) for i in range(n)]
+
+line = {
+    'x': [round(p[0], 2) for p in pts],
+    'y': [round(p[1], 2) for p in pts],
+    'z': [round(p[2], 2) for p in pts],
+    'l': [round(e[5], 2) for e in extra],
+    'r': [round(e[6], 2) for e in extra],
+}
+json.dump(line, open(out, 'w'), separators=(',', ':'))
+print(f'{name}: {n} puntos (fast_lane v{version}) -> {out}')
