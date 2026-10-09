@@ -136,6 +136,8 @@ h1 span { color: var(--accent); }
 .corner b { font: 700 26px/1.05 var(--display); text-transform: uppercase; letter-spacing: .01em; }
 .corner span { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
 
+.next { min-height: 1.3em; margin-top: 4px; font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.next b { color: var(--fg); font-weight: 600; }
 .dash { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; align-items: end; margin-top: 12px; }
 .speed { font: 700 76px/0.85 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
 .speed small { font: 600 14px var(--display); letter-spacing: .12em; color: var(--muted); margin-left: 6px; }
@@ -261,6 +263,12 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
             <button data-v="lap" aria-pressed="true">Vuelta</button><button data-v="rolling">Continuo</button><button data-v="short">Estela</button>
           </div>
         </div>
+        <div class="ctl">
+          <span class="ctl-label">Carteles</span>
+          <div class="seg" id="boards">
+            <button data-v="on" aria-pressed="true">Sí</button><button data-v="off">No</button>
+          </div>
+        </div>
         <button class="ghost" id="clear">Borrar rastro</button>
         <div class="scrub">
           <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Posición en la vuelta">
@@ -272,6 +280,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
     <aside class="hud">
       <div class="card">
         <div class="corner"><b id="cornerName">Recta principal</b><span id="dist">0 m</span></div>
+        <div class="next" id="next"></div>
         <div class="dash">
           <div class="speed"><span id="spd">0</span><small>KM/H</small></div>
           <div><div class="gear" id="gear">1</div><div class="gear-l">MARCHA</div></div>
@@ -330,7 +339,9 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
   <footer class="notes">
     <p><b>Trazada:</b> línea AI <code>fast_lane.ai</code> de Kunos para Spa en Assetto Corsa (4470 puntos, con el ancho real de pista a cada lado).</p>
     <p><b>Velocidad y pedales:</b> simulación cuasi-estática de vuelta con la física del 458 GT2 de AC: curva de torque, 6 marchas + final 3,20, freno motor, carga aerodinámica por ala (frontal 2°, trasera regulable, difusor), slicks con sensibilidad a la carga, pendientes y compresiones de Eau Rouge. Es una referencia para estudiar puntos de frenada y aceleración, no telemetría real de un piloto.</p>
-    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro</p>
+    <p><b>Marchas:</b> siguen los puntos de cambio que Kunos le cargó a la IA de este auto en <code>ai.ini</code> (sube a 7150 rpm, baja por debajo de 4700 rpm).</p>
+    <p><b>Carteles:</b> están a 200, 150, 100 y 50 m del punto de giro de cada curva con frenada, medido sobre la trazada (donde el radio baja de 450 m). Sirven de referencia y no copian la posición de los carteles reales de la pista. Solo se muestran los que entran en la recta anterior a la curva.</p>
+    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro · <kbd>B</kbd> carteles</p>
   </footer>
 </div>
 
@@ -347,20 +358,20 @@ const $ = id => document.getElementById(id);
 
 // ---------- curvas de Spa (distancias sobre la trazada AI) ----------
 const CORNERS = [
-  { n: 'T1',     name: 'La Source',          a: 250,  b: 520,  apex: 380 },
+  { n: 'T1',     name: 'La Source',          a: 250,  b: 520,  apex: 380,  turn: 380 },
   { n: 'T2–4',   name: 'Eau Rouge',          a: 950,  b: 1360, apex: 1130, label: 'Eau Rouge · Raidillon' },
   { n: '',       name: 'Recta Kemmel',       a: 1360, b: 2260, apex: 1800, straight: true },
-  { n: 'T5–6',   name: 'Les Combes',         a: 2260, b: 2530, apex: 2425 },
+  { n: 'T5–6',   name: 'Les Combes',         a: 2260, b: 2530, apex: 2425, turn: 2422 },
   { n: 'T7',     name: 'Malmedy',            a: 2530, b: 2720, apex: 2594 },
-  { n: 'T8',     name: 'Rivage',             a: 2880, b: 3140, apex: 3041 },
+  { n: 'T8',     name: 'Rivage',             a: 2880, b: 3140, apex: 3041, turn: 3041 },
   { n: 'T9',     name: 'Bruxelles',          a: 3140, b: 3400, apex: 3245, inside: true },
-  { n: 'T10–11', name: 'Pouhon',             a: 3650, b: 4200, apex: 3846 },
-  { n: 'T12–13', name: 'Les Fagnes',         a: 4380, b: 4720, apex: 4560 },
-  { n: 'T14',    name: 'Campus',             a: 4780, b: 5020, apex: 4931 },
+  { n: 'T10–11', name: 'Pouhon',             a: 3650, b: 4200, apex: 3846, turn: 3845 },
+  { n: 'T12–13', name: 'Les Fagnes',         a: 4380, b: 4720, apex: 4560, turn: 4502 },
+  { n: 'T14',    name: 'Campus',             a: 4780, b: 5020, apex: 4931, turn: 4930 },
   { n: 'T15',    name: 'Stavelot',           a: 5020, b: 5300, apex: 5150 },
   { n: 'T16',    name: 'Paul Frère',         a: 5300, b: 5650, apex: 5480 },
   { n: 'T17',    name: 'Blanchimont',        a: 5950, b: 6320, apex: 6146 },
-  { n: 'T18–19', name: 'Chicane',            a: 6520, b: 6860, apex: 6755, label: 'Chicane (Bus Stop)' },
+  { n: 'T18–19', name: 'Chicane',            a: 6520, b: 6860, apex: 6755, turn: 6705, label: 'Chicane (Bus Stop)' },
 ];
 
 const G = buildGeometry(TRACK);
@@ -401,6 +412,23 @@ for (let i = N; i >= 0; i--) {
   const k = i % N; trackPath.lineTo(PX[k] + NX[k] * (SR[k] + 0.6), PZ[k] + NZ[k] * (SR[k] + 0.6));
 }
 trackPath.closePath();
+
+// ---------- carteles de frenada: 200/150/100/50 m antes del punto de giro ----------
+const BOARD_DISTS = [200, 150, 100, 50];
+const BOARDS = [];
+for (const c of CORNERS) {
+  if (c.turn == null) continue;
+  const h = idxAtDist(c.turn);
+  let pk = h;
+  for (let k = -12; k <= 12; k++) { const j = (h + k + N) % N; if (Math.abs(G.kappa[j]) > Math.abs(G.kappa[pk])) pk = j; }
+  let ti = pk;
+  while (Math.abs(G.kappa[(ti - 1 + N) % N]) > 1 / 450) ti = (ti - 1 + N) % N;   // giro = donde el radio baja de 450 m
+  let straight = 0, k = (ti - 1 + N) % N;
+  while (Math.abs(G.kappa[k]) < 1 / 450 && straight < 400) { straight += G.ds[k]; k = (k - 1 + N) % N; }
+  c.turnIn = G.s[ti];
+  const side = G.kappa[pk] > 0 ? -1 : 1;   // del lado de afuera, donde va el auto antes de girar
+  for (const D of BOARD_DISTS) if (D <= straight + 10) BOARDS.push({ corner: c, D, i: idxAtDist(c.turnIn - D), side });
+}
 
 let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
 for (let i = 0; i < N; i++) { minX = Math.min(minX, PX[i]); maxX = Math.max(maxX, PX[i]); minZ = Math.min(minZ, PZ[i]); maxZ = Math.max(maxZ, PZ[i]); }
@@ -451,7 +479,7 @@ const lapLen = () => SIM ? SIM.lapTime : 1;
 const fmtLap = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
 
 // ---------- reloj de reproducción ----------
-let clock = 0, trailFrom = 0, playing = true, rate = 1, trailMode = 'lap', camMode = 'full';
+let clock = 0, trailFrom = 0, playing = true, rate = 1, trailMode = 'lap', camMode = 'full', showBoards = true;
 let cur = { i: 0, f: 0 };
 function locate(tAbs) {
   const L = lapLen(), lap = Math.floor(tAbs / L), t = tAbs - lap * L;
@@ -511,11 +539,13 @@ function drawMap() {
     }
   }
 
+  if (showBoards) drawBoardLines(ctx, px);
   drawTrail(ctx, px);
 
   // etiquetas y auto en espacio de pantalla
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   drawLabels(ctx);
+  if (showBoards) drawBoards(ctx);
   const [cx, cz] = posAt(cur.i, cur.f);
   const [sx, sy] = toScreen(cx, cz);
   const key = colorKey(cur.i);
@@ -560,6 +590,61 @@ function drawTrail(ctx, px) {
   if (k !== key) { flush(); key = k; ctx.beginPath(); ctx.moveTo(x, z); }
   ctx.lineTo(ex, ez); flush();
   ctx.globalAlpha = 1;
+}
+
+// carteles de la curva que viene (a menos de 220 m del giro): se encienden en amarillo
+function upcomingCorner(d) {
+  for (const k of CORNERS) {
+    if (k.turnIn == null) continue;
+    const gap = ((k.turnIn - d) % G.length + G.length) % G.length;
+    if (gap > 0 && gap <= 220) return k;
+  }
+  return null;
+}
+function drawBoardLines(ctx, px) {
+  const d = G.s[cur.i] + cur.f * G.ds[cur.i], up = upcomingCorner(d);
+  ctx.lineWidth = 1.2 * px; ctx.setLineDash([3 * px, 3 * px]);
+  for (const b of BOARDS) {
+    const i = b.i, l = SL[i] + 0.6, r = SR[i] + 0.6;
+    const ahead = b.corner === up && ((G.s[i] - d) % G.length + G.length) % G.length < 220;
+    ctx.strokeStyle = ahead ? 'rgba(246,201,14,.55)' : b.D === 100 ? 'rgba(139,147,157,.55)' : 'rgba(139,147,157,.32)';
+    ctx.beginPath(); ctx.moveTo(PX[i] - NX[i] * l, PZ[i] - NZ[i] * l); ctx.lineTo(PX[i] + NX[i] * r, PZ[i] + NZ[i] * r); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawBoards(ctx) {
+  const big = cam.s > 1.15;           // con zoom: cartel con número; vista general: marca chica
+  const d = G.s[cur.i] + cur.f * G.ds[cur.i], up = upcomingCorner(d);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '600 10px "JetBrains Mono", Consolas, monospace';
+  for (const b of BOARDS) {
+    if (!big && b.D !== 200 && b.D !== 100) continue;
+    const i = b.i, edge = (b.side < 0 ? SL[i] : SR[i]) + 0.6;
+    const [ex, ey] = toScreen(PX[i] + NX[i] * b.side * edge, PZ[i] + NZ[i] * b.side * edge);
+    if (ex < -30 || ey < -30 || ex > MW + 30 || ey > MH + 30) continue;
+    const [ox, oy] = toScreen(PX[i] + NX[i] * b.side * (edge + 1), PZ[i] + NZ[i] * b.side * (edge + 1));
+    const dl = Math.hypot(ox - ex, oy - ey) || 1, ux = (ox - ex) / dl, uy = (oy - ey) / dl;
+    const ahead = b.corner === up && ((G.s[i] - d) % G.length + G.length) % G.length < 220;
+    const ink = ahead ? '#f6c90e' : b.D === 100 ? '#e8eaed' : '#8b939d';
+    if (big) {
+      const label = String(b.D), w = label.length * 6.4 + 10, h = 16;
+      const bx = ex + ux * (w / 2 + 8), by = ey + uy * 15;
+      ctx.strokeStyle = ahead ? 'rgba(246,201,14,.6)' : '#48505a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(bx - ux * w / 2, by - uy * h / 2); ctx.stroke();
+      roundRect(ctx, bx - w / 2, by - h / 2, w, h, 3);
+      ctx.fillStyle = 'rgba(20,23,28,.94)'; ctx.fill();
+      ctx.strokeStyle = ahead ? '#f6c90e' : '#262b33'; ctx.stroke();
+      ctx.fillStyle = ink; ctx.fillText(label, bx, by + 0.5);
+    } else {
+      ctx.beginPath(); ctx.arc(ex + ux * 5, ey + uy * 5, b.D === 100 ? 2.2 : 1.7, 0, Math.PI * 2);
+      ctx.fillStyle = ahead ? '#f6c90e' : '#8b939d'; ctx.fill();
+    }
+  }
 }
 
 function drawLabels(ctx) {
@@ -635,6 +720,9 @@ function updateHUD() {
   const intensity = m === 'b' ? brk : m === 't' ? thr : 0;
   st.querySelector('span').textContent = m === 'b' ? `Frena ${Math.round(brk * 100)} %` : m === 't' ? (thr > 0.97 ? 'A fondo' : `Acelera ${Math.round(thr * 100)} %`) : 'Suelta los pedales';
   st.querySelector('i').style.background = colorOf(colorKey(i));
+  const up = upcomingCorner(d);
+  const gap = up ? ((up.turnIn - d) % G.length + G.length) % G.length : 0;
+  $('next').innerHTML = !up ? '' : cornerAt(d) === up ? `giro en ${Math.round(gap)} m` : `<b>${up.name}</b> · giro en ${Math.round(gap)} m`;
   const c = cornerAt(d);
   if (c !== lastCorner) {
     lastCorner = c;
@@ -694,6 +782,12 @@ function drawChartBase() {
     if (SIM.thr[i] > 0.01) { c.fillStyle = PALETTE.t[Math.round(SIM.thr[i] * LEVELS)]; c.fillRect(x0, yT + hS * (1 - SIM.thr[i]), w, hS * SIM.thr[i]); }
     if (SIM.brk[i] > 0.01) { c.fillStyle = PALETTE.b[Math.round(SIM.brk[i] * LEVELS)]; c.fillRect(x0, yT + hS + 4 + hS * (1 - SIM.brk[i]), w, hS * SIM.brk[i]); }
   }
+  // carteles: marcas sobre el eje
+  for (const b of BOARDS) {
+    const x = Math.round(cx(G.s[b.i])) + .5;
+    c.strokeStyle = b.D === 100 ? 'rgba(232,234,237,.55)' : 'rgba(232,234,237,.28)'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x, CP.t + plotH - (b.D === 100 ? 9 : 5)); c.lineTo(x, CP.t + plotH); c.stroke();
+  }
   c.textAlign = 'right'; c.fillStyle = '#5b626c'; c.font = '9.5px "JetBrains Mono", monospace';
   c.fillText('ACEL', CP.l - 6, yT + hS / 2); c.fillText('FRENO', CP.l - 6, yT + hS * 1.5 + 4);
   c.save(); c.translate(10, CP.t + plotH / 2); c.rotate(-Math.PI / 2); c.textAlign = 'center'; c.fillText('KM/H', 0, 0); c.restore();
@@ -720,15 +814,22 @@ function buildCornerStats() {
     const ia = idxAtDist(k.a), ib = idxAtDist(k.b);
     let iMin = ia;
     for (let i = ia; i !== ib; i = (i + 1) % N) if (SIM.v[i] < SIM.v[iMin]) iMin = i;
-    // frenada propia de la curva: hacia atrás desde el vértice hasta volver a encontrar acelerador a fondo
-    let peak = 0, lifted = false;
-    for (let s = 0, i = iMin; s < 300; s++, i = (i - 1 + N) % N) {
-      if (SIM.thr[i] > 0.3 && peak === 0 && s > 3) break;
-      if (SIM.thr[i] > 0.3 && peak > 0) break;
-      peak = Math.max(peak, SIM.brk[i]);
-      if (SIM.brk[i] <= 0.02 && SIM.thr[i] <= 0.03) lifted = true;
+    // frenada propia de la curva: desde 300 m antes (sin pisar el vértice anterior) hasta el punto más lento
+    const prev = CORNERS[CORNERS.indexOf(k) - 1];
+    const from = Math.max(k.a - 300, prev && !prev.straight ? prev.apex + 30 : -Infinity, prev && prev.straight ? prev.a : -Infinity);
+    // zonas de frenada en la ventana; la principal es la última que arranca antes del giro
+    const starts = [];
+    let coastRun = 0, maxCoast = 0;
+    for (let i = idxAtDist(from); i !== iMin; i = (i + 1) % N) {
+      if (SIM.brk[i] > 0.02 && SIM.brk[(i - 1 + N) % N] <= 0.02) starts.push(i);
+      if (SIM.brk[i] <= 0.02 && SIM.thr[i] <= 0.03) { coastRun++; maxCoast = Math.max(maxCoast, coastRun); } else coastRun = 0;
     }
-    const how = peak > 0.02 ? `frena ${Math.round(peak * 100)} %` : lifted ? 'levanta' : 'a fondo';
+    const before = k.turnIn == null ? starts : starts.filter(i => ((k.turnIn - G.s[i]) % G.length + G.length) % G.length < 400);
+    const bs = before.length ? before[before.length - 1] : starts.length ? starts[0] : -1;
+    let peak = 0;
+    if (bs >= 0) for (let i = bs; i !== iMin; i = (i + 1) % N) peak = Math.max(peak, SIM.brk[i]);
+    let how = peak > 0.02 ? `frena ${Math.round(peak * 100)} %` : maxCoast > 8 ? 'levanta' : 'a fondo';
+    if (bs >= 0 && k.turnIn != null) how += ` · a ${Math.round(((k.turnIn - G.s[bs]) % G.length + G.length) % G.length)} m del giro`;
     const btn = document.createElement('button');
     btn.className = 'chip'; btn.dataset.name = k.name; btn.type = 'button';
     btn.innerHTML = `<span class="n">${k.n}</span><b>${k.name}</b><span>${Math.round(SIM.v[iMin] * 3.6)} km/h · ${SIM.gear[iMin]}ª · ${how}</span>`;
@@ -782,6 +883,7 @@ function segGroup(id, cb) {
 const setRate = segGroup('rate', v => rate = +v);
 const setCam = segGroup('cam', v => { camMode = v; userView = null; });
 segGroup('trail', v => { trailMode = v; });
+const setBoards = segGroup('boards', v => { showBoards = v === 'on'; });
 $('clear').addEventListener('click', () => { trailFrom = clock; });
 
 let scrubbing = false;
@@ -863,6 +965,7 @@ window.addEventListener('keydown', e => {
   else if (/^[1-5]$/.test(e.key)) setRate(['0.25', '0.5', '1', '2', '4'][+e.key - 1]);
   else if (e.key === 'f' || e.key === 'F') setCam(camMode === 'follow' ? 'full' : 'follow');
   else if (e.key === 'c' || e.key === 'C') trailFrom = clock;
+  else if (e.key === 'b' || e.key === 'B') setBoards(showBoards ? 'off' : 'on');
 });
 
 // ---------- arranque ----------

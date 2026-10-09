@@ -10,6 +10,7 @@ const CAR_458 = {
   rWheel: 0.355,
   driveEff: 0.9,
   coastTorque: 110, coastRpm: 9000,   // freno motor (engine.ini COAST_REF)
+  shiftUp: 7150, shiftDown: 4700,     // puntos de cambio de la IA de Kunos para este auto (ai.ini [GEARS])
   wingArea: 2.13975,                  // CHORD 1 x SPAN 2.13975
   body: { cl: 0.0, cd: 0.345 },
   front: { cl: 0.52, cd: 0.0025 },    // splitter a 2°
@@ -114,6 +115,17 @@ function simulateLap(G, CAR, opt) {
     }
     return best;
   }
+  // marcha como la maneja la IA de Kunos: sube pasando shiftUp, baja por debajo de shiftDown
+  const last = CAR.gears.length - 1;
+  function shift(v, gi) {
+    while (gi < last && rpmOf(v, gi) > CAR.shiftUp) gi++;
+    while (gi > 0 && rpmOf(v, gi) < CAR.shiftDown && rpmOf(v, gi - 1) < CAR.limiter) gi--;
+    return gi;
+  }
+  const forceIn = (v, gi) => {
+    const rpm = Math.min(rpmOf(v, gi), CAR.limiter);
+    return lut(CAR.torque, Math.max(rpm, 3000)) * CAR.gears[gi] * CAR.final * CAR.driveEff / CAR.rWheel;
+  };
   const coast = v => {
     const e = engine(v);
     return CAR.coastTorque * (e.rpm / CAR.coastRpm) * CAR.gears[e.gear] * CAR.final / CAR.rWheel;
@@ -145,11 +157,12 @@ function simulateLap(G, CAR, opt) {
   // 2) pasada hacia adelante (aceleración)
   const vF = new Float64Array(n + 1);
   vF[0] = vLat[i0];
+  let gF = engine(vF[0]).gear;
   for (let k = 0; k < n; k++) {
     const i = idx(k), v = vF[k];
-    const e = engine(v);
+    gF = shift(v, gF);
     const traction = gripForce(v, i) * CAR.rearShare * latUse(v, i);
-    const Fx = Math.min(e.F, traction) - drag(v) - 0.012 * m * g - m * g * grade[i];
+    const Fx = Math.min(forceIn(v, gF), traction) - drag(v) - 0.012 * m * g - m * g * grade[i];
     const v2 = v * v + 2 * Fx / m * ds[i];
     vF[k + 1] = Math.min(Math.sqrt(Math.max(v2, 1)), vLat[idx(k + 1)]);
   }
@@ -167,6 +180,11 @@ function simulateLap(G, CAR, opt) {
   const v = new Float64Array(n);
   for (let k = 0; k < n; k++) v[idx(k)] = vB[k];
 
+  // secuencia de marchas sobre la vuelta final (dos pasadas para que cierre la vuelta)
+  const gi = new Uint8Array(n);
+  let gs = engine(v[i0]).gear;
+  for (let pass = 0; pass < 2; pass++) for (let k = 0; k < n; k++) { const i = idx(k); gs = shift(v[i], gs); gi[i] = gs; }
+
   // 4) pedales, marcha, rpm, fuerzas g y tiempo
   const brakeRef = gripForce(72, 0) * 0.96;   // capacidad de frenada a ~260 km/h = 100 % de pedal
   const thr = new Float64Array(n), brk = new Float64Array(n), gear = new Uint8Array(n), rpm = new Float64Array(n);
@@ -175,9 +193,8 @@ function simulateLap(G, CAR, opt) {
     const j = (i + 1) % n, vi = v[i], vj = v[j];
     const a = (vj * vj - vi * vi) / (2 * ds[i]);
     const need = m * a + drag(vi) + 0.012 * m * g + m * g * grade[i];
-    const e = engine(vi);
-    gear[i] = e.gear + 1; rpm[i] = e.rpm;
-    if (need > 0) thr[i] = Math.min(1, need / e.F);
+    gear[i] = gi[i] + 1; rpm[i] = Math.min(rpmOf(vi, gi[i]), CAR.limiter);
+    if (need > 0) thr[i] = Math.min(1, need / forceIn(vi, gi[i]));
     else {
       const extra = -need - coast(vi);
       if (extra > 0.02 * brakeRef) brk[i] = Math.min(1, extra / brakeRef);
