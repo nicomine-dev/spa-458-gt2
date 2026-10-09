@@ -207,6 +207,39 @@ h1 span { color: var(--accent); }
 .chip b { font: 600 15px var(--display); letter-spacing: .02em; text-transform: uppercase; }
 .chip span { grid-column: 2; font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* ---------- tus vueltas ---------- */
+.mine { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; min-width: 0; display: grid; gap: 14px; }
+.mine-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.mine-head h2 { margin: 0; font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.mine-head span { font: 12px var(--mono); color: var(--faint); }
+.file { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
+.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.laps { display: flex; flex-wrap: wrap; gap: 8px; }
+.lap { display: grid; gap: 2px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; text-align: left; }
+.lap:hover { border-color: var(--edge); }
+.lap[aria-pressed="true"] { border-color: var(--accent); }
+.lap b { font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
+.lap span { font: 600 10.5px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.lap.best span { color: var(--accent); }
+.lap.bad b { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
+.summary { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 110ch; }
+.summary b { color: var(--fg); font-weight: 600; }
+.loss-wrap { overflow-x: auto; }
+.loss { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px; }
+.loss th { text-align: left; font: 600 10.5px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); padding: 0 10px 8px 0; white-space: nowrap; }
+.loss td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loss td:first-child { font-family: var(--display); font-size: 14.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.loss tr { cursor: pointer; }
+.loss tbody tr:hover td { background: var(--panel-2); }
+.loss small { color: var(--faint); font-size: 11.5px; }
+.bar { display: inline-grid; grid-template-columns: 90px 64px; align-items: center; gap: 8px; }
+.bar i { display: block; height: 7px; border-radius: 4px; background: var(--brake); justify-self: start; }
+.bar i.gain { background: var(--throttle); }
+.worse { color: var(--brake); }
+.better { color: var(--throttle); }
+.empty { color: var(--muted); font-size: 13.5px; margin: 0; max-width: 90ch; }
+.empty code { font-size: 12px; color: var(--fg); }
+
 .notes { color: var(--muted); font-size: 12.5px; max-width: 110ch; display: grid; gap: 6px; }
 .notes p { margin: 0; }
 .notes b { color: var(--fg); font-weight: 500; }
@@ -238,7 +271,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
     <div class="mode">
       <span class="eyebrow">Versión de la vuelta</span>
       <div class="seg seg-lg" id="mode">
-        <button data-v="theory" aria-pressed="true">Teórica</button><button data-v="human">Humana</button>
+        <button data-v="theory" aria-pressed="true">Teórica</button><button data-v="human">Humana</button><button data-v="mine" hidden>Tuya</button>
       </div>
     </div>
     <div class="laptime">
@@ -286,6 +319,12 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
           <span class="ctl-label">Carteles</span>
           <div class="seg" id="boards">
             <button data-v="on" aria-pressed="true">Sí</button><button data-v="off">No</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label">Comparar con</span>
+          <div class="seg" id="vs">
+            <button data-v="theory">Teórica</button><button data-v="human" aria-pressed="true">Humana</button><button data-v="best" hidden>Tu mejor</button>
           </div>
         </div>
         <div class="ctl">
@@ -366,17 +405,30 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
     <div class="corners" id="corners"></div>
   </section>
 
+  <section class="mine" aria-label="Tus vueltas">
+    <div class="mine-head">
+      <h2>Tus vueltas</h2>
+      <span id="recMeta">sin grabación</span>
+      <label class="ghost file">Cargar sesión…<input type="file" id="recFile" accept=".json,application/json"></label>
+    </div>
+    <div class="laps" id="laps"></div>
+    <p class="summary" id="summary"></p>
+    <div class="loss-wrap"><table class="loss" id="loss"></table></div>
+  </section>
+
   <footer class="notes">
     <p><b>Trazada:</b> línea AI <code>fast_lane.ai</code> de Kunos para Spa en Assetto Corsa (4470 puntos, con el ancho real de pista a cada lado).</p>
     <p><b>Física (las dos versiones):</b> datos del 458 GT2 de AC: curva de torque, 6 marchas + final 3,20, corte a 8300 rpm, freno motor, carga aerodinámica por ala (frontal 2°, trasera regulable, difusor), slicks con sensibilidad a la carga, pendientes y compresiones de Eau Rouge.</p>
     <p><b>Teórica:</b> el límite físico. Usa el 100 % del grip en curva, frenada y tracción, pasa de un pedal al otro al instante y usa siempre la marcha que más empuja (sube cerca del corte).</p>
     <p><b>Humana:</b> un piloto simulado que maneja en el tiempo. Usa el grip elegido en curva (93 % por defecto), 6 puntos menos en frenada y 3 menos en tracción. Mira 0,3 s adelante, tarda 0,15 s en llegar a fondo de freno y 0,4 s en soltarlo, 0,4 s en pisar a fondo el acelerador y 0,1 s con los dos pies arriba al cambiar de pedal. En curvas rápidas donde baja menos de 25 km/h levanta en vez de frenar. Cambia como la IA de Kunos para este auto (<code>ai.ini</code>: sube a 7150 rpm, baja por debajo de 4700) con 0,08 s sin empuje en cada cambio. Estos tiempos son supuestos típicos de un buen piloto de simulador, no salen del juego.</p>
-    <p>Ninguna de las dos es telemetría real: sirven para estudiar puntos de frenada, aceleración y dónde se pierde tiempo.</p>
+    <p><b>Tus vueltas:</b> grabadas de tu partida con <code>tools/record.py</code>, que lee la telemetría que publica Assetto Corsa (velocidad, marcha, pedales, posición y coordenadas, unas 50 veces por segundo). El punto recorre tu línea real. Una vuelta es inválida si en algún momento hubo más de dos ruedas afuera o pasaste por boxes. La tabla parte la vuelta en tramos que empiezan 150 m antes de cada curva e incluyen su salida.</p>
+    <p>Las versiones teórica y humana no son telemetría real: sirven para estudiar puntos de frenada, aceleración y dónde se pierde tiempo.</p>
     <p><b>Carteles:</b> están a 200, 150, 100 y 50 m del punto de giro de cada curva con frenada, medido sobre la trazada (donde el radio baja de 450 m). Sirven de referencia y no copian la posición de los carteles reales de la pista. Solo se muestran los que entran en la recta anterior a la curva.</p>
-    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro · <kbd>B</kbd> carteles · <kbd>M</kbd> teórica/humana · <kbd>G</kbd> fantasma</p>
+    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro · <kbd>B</kbd> carteles · <kbd>M</kbd> cambiar versión · <kbd>G</kbd> fantasma</p>
   </footer>
 </div>
 
+<script src="mis-vueltas.js"></script>
 <script>
 const TRACK = /*__TRACK__*/;
 </script>
@@ -409,10 +461,15 @@ const CORNERS = [
 const G = buildGeometry(TRACK);
 const N = G.n;
 const BASE = { wing: 4, fuel: 30, grip: 100, level: 93 };
-const MODE_NAME = { theory: 'teórica', human: 'humana' };
-let opts = { ...BASE }, mode = 'theory', showGhost = true;
+const MODE_NAME = { theory: 'teórica', human: 'humana', mine: 'tu vuelta', best: 'tu mejor' };
+let opts = { ...BASE }, mode = 'theory', showGhost = true, vsMode = 'human';
 let SIMS = {}, SIM = null, OTHER = null, baseLaps = null;
-const other = m => m === 'theory' ? 'human' : 'theory';
+// contra qué se compara: lo elegido, salvo que sea la misma vuelta que se está viendo
+const other = m => {
+  if (vsMode !== m && SIMS[vsMode] && !(m === 'mine' && vsMode === 'best' && SIMS.mine === SIMS.best)) return vsMode;
+  return m === 'human' ? 'theory' : 'human';
+};
+const RECORDING = window.MIS_VUELTAS || null;   // tu última sesión grabada: mis-vueltas.js, lo escribe build.py (no va al repo)
 const simOpts = (m, o = opts) => ({ mode: m, wing: o.wing, fuel: o.fuel, grip: o.grip / 100, level: o.level / 100 });
 
 // ---------- geometría del mapa ----------
@@ -498,7 +555,7 @@ function keepPlace(d) {
 }
 function runSim(keepDist) {
   const d = curDist(), L0 = lapLen();
-  SIMS = { theory: simulateLap(G, CAR_458, simOpts('theory')), human: simulateLap(G, CAR_458, simOpts('human')) };
+  SIMS = { ...SIMS, theory: simulateLap(G, CAR_458, simOpts('theory')), human: simulateLap(G, CAR_458, simOpts('human')) };
   if (!baseLaps) baseLaps = { theory: SIMS.theory.lapTime, human: SIMS.human.lapTime };
   applyMode(keepDist ? d : null, L0);
   scheduleBestWing();
@@ -511,20 +568,165 @@ function applyMode(d, L0) {
     trailFrom = Math.min(trailFrom, lapIdx * SIM.lapTime);
     if (clock < trailFrom) trailFrom = lapIdx * SIM.lapTime;
   }
-  $('lapLabel').textContent = mode === 'theory' ? 'Óptimo teórico' : 'Vuelta humana';
+  $('lapLabel').textContent = mode === 'theory' ? 'Óptimo teórico' : mode === 'human' ? 'Vuelta humana' : `Tu vuelta ${SIM.lapN}`;
   $('lapTime').textContent = fmtLap(SIM.lapTime);
   const diff = OTHER.lapTime - SIM.lapTime;
-  const vsBase = SIM.lapTime - baseLaps[mode];
+  const vsBase = baseLaps[mode] ? SIM.lapTime - baseLaps[mode] : 0;
   $('lapDelta').textContent = `${MODE_NAME[other(mode)]} ${fmtLap(OTHER.lapTime)} (${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(3)} s)`
     + (Math.abs(vsBase) < 0.0005 ? '' : ` · ${vsBase > 0 ? '+' : '−'}${Math.abs(vsBase).toFixed(3)} s vs setup base`);
-  $('aeroMeta').textContent = `ClA ${SIM.clA.toFixed(2).replace('.', ',')} · CdA ${SIM.cdA.toFixed(2).replace('.', ',')}`;
-  $('carMeta').textContent = `${Math.round(SIM.mass)} kg con nafta · ~420 CV · slicks SS`;
-  $('keyMain').textContent = mode === 'theory' ? 'Teórica' : 'Humana';
-  $('keyGhost').textContent = mode === 'theory' ? 'Humana' : 'Teórica';
+  const S0 = SIMS.theory;
+  $('aeroMeta').textContent = `ClA ${S0.clA.toFixed(2).replace('.', ',')} · CdA ${S0.cdA.toFixed(2).replace('.', ',')}`;
+  $('carMeta').textContent = `${Math.round(S0.mass)} kg con nafta · ~420 CV · slicks SS`;
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  $('keyMain').textContent = cap(MODE_NAME[mode]);
+  $('keyGhost').textContent = cap(MODE_NAME[other(mode)]);
+  renderAnalysis();
   buildCornerStats();
   drawChartBase();
   renderBest();
 }
+// pasa una vuelta grabada (muestras por tiempo) a la grilla de la pista (muestras por distancia)
+function lapToRun(lap) {
+  const s = lap.s, n = s.p.length, L = G.length;
+  const dist = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    let d = s.p[k] * L;
+    if (k < n * 0.1 && s.p[k] > 0.5) d -= L;        // muestras de antes de cruzar la línea
+    if (k > n * 0.9 && s.p[k] < 0.5) d += L;        // y de después
+    dist[k] = k ? Math.max(d, dist[k - 1]) : d;
+  }
+  const v = new Float64Array(N), thr = new Float64Array(N), brk = new Float64Array(N), rpm = new Float64Array(N);
+  const gear = new Uint8Array(N), px = new Float64Array(N), pz = new Float64Array(N), tt = new Float64Array(N + 1);
+  let k = 0;
+  for (let i = 0; i < N; i++) {
+    const d = G.s[i];
+    while (k < n - 2 && dist[k + 1] <= d) k++;
+    const span = dist[k + 1] - dist[k];
+    const f = span > 1e-6 ? Math.min(1, Math.max(0, (d - dist[k]) / span)) : 0;
+    const L1 = (a) => a[k] + (a[k + 1] - a[k]) * f;
+    v[i] = L1(s.v) / 3.6; thr[i] = L1(s.thr); brk[i] = L1(s.brk); rpm[i] = L1(s.rpm);
+    gear[i] = Math.max(0, s.g[f < 0.5 ? k : k + 1]);
+    px[i] = L1(s.x); pz[i] = L1(s.z); tt[i] = L1(s.t) / 1000;
+  }
+  tt[N] = lap.time / 1000;
+  for (let i = 1; i <= N; i++) if (tt[i] <= tt[i - 1]) tt[i] = tt[i - 1] + 1e-4;
+  const gLat = new Float64Array(N), gLong = new Float64Array(N);
+  let vmax = 0, vmin = Infinity;
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    gLat[i] = v[i] * v[i] * G.kappa[i] / 9.81;
+    gLong[i] = (v[j] - v[i]) / Math.max(tt[i + 1] - tt[i], 1e-3) / 9.81;
+    vmax = Math.max(vmax, v[i]); vmin = Math.min(vmin, v[i]);
+  }
+  return { v, thr, brk, gear, rpm, gLat, gLong, t: tt, lapTime: lap.time / 1000, vmax, vmin, px, pz, lapN: lap.n, valid: lap.valid, own: true };
+}
+
+let REC = null, recLap = null;
+function loadRecording(rec) {
+  const laps = (rec.laps || []).filter(l => l.complete && l.time > 0 && l.s && l.s.p.length > 50);
+  if (!laps.length) { REC = null; renderLaps(); return false; }
+  REC = { ...rec, laps };
+  const valid = laps.filter(l => l.valid);
+  const bestLap = (valid.length ? valid : laps).reduce((a, b) => b.time < a.time ? b : a);
+  SIMS.best = lapToRun(bestLap); SIMS.best.lapN = bestLap.n;
+  REC.bestN = bestLap.n;
+  selectLap(bestLap.n, true);
+  document.querySelector('#mode [data-v="mine"]').hidden = false;
+  document.querySelector('#vs [data-v="best"]').hidden = false;
+  return true;
+}
+function selectLap(n, silent) {
+  const lap = REC.laps.find(l => l.n === n);
+  if (!lap) return;
+  recLap = n;
+  SIMS.mine = n === REC.bestN ? SIMS.best : lapToRun(lap);
+  renderLaps();
+  if (!silent || mode === 'mine') { if (mode !== 'mine') setMode('mine'); else applyMode(curDist(), lapLen()); }
+}
+function renderLaps() {
+  const box = $('laps');
+  if (!REC) {
+    $('recMeta').textContent = 'sin grabación';
+    box.innerHTML = '';
+    $('summary').innerHTML = '';
+    $('loss').innerHTML = '';
+    $('summary').outerHTML = `<p class="empty" id="summary">Todavía no hay vueltas tuyas. Con el juego abierto corré <code>python tools/record.py</code>, da unas vueltas y volvé a generar la página (<code>python tools/build.py -50</code>), o cargá el archivo de <code>recordings/</code> con “Cargar sesión…”.</p>`;
+    return;
+  }
+  const nValid = REC.laps.filter(l => l.valid).length;
+  $('recMeta').textContent = `${(REC.started || '').replace('T', ' ').slice(0, 16)} · ${REC.track} · ${REC.car} · ${REC.laps.length} vueltas (${nValid} válidas)`;
+  box.innerHTML = REC.laps.map(l => `<button type="button" class="lap${l.n === REC.bestN ? ' best' : ''}${l.valid ? '' : ' bad'}" data-n="${l.n}" aria-pressed="${l.n === recLap}">
+    <span>${l.n === REC.bestN ? 'Mejor · ' : ''}Vuelta ${l.n}${l.valid ? '' : ' · inválida'}</span><b>${fmtLap(l.time / 1000)}</b></button>`).join('');
+  box.querySelectorAll('.lap').forEach(b => b.addEventListener('click', () => selectLap(+b.dataset.n)));
+}
+
+// tiempo de una vuelta en una distancia de la pista
+function tAt(R, d) {
+  const i = idxAtDist(d), f = (d - G.s[i]) / G.ds[i];
+  return R.t[i] + (R.t[i + 1] - R.t[i]) * Math.min(1, Math.max(0, f));
+}
+const wrapL = d => ((d % G.length) + G.length) % G.length;
+// métricas de una vuelta en una curva
+function cornerMetrics(R, k, from) {
+  const ia = idxAtDist(k.a), ib = idxAtDist(k.b);
+  let iMin = ia;
+  for (let i = ia; i !== ib; i = (i + 1) % N) if (R.v[i] < R.v[iMin]) iMin = i;
+  let brakeAt = null;
+  for (let i = idxAtDist(from); i !== iMin; i = (i + 1) % N) if (R.brk[i] > 0.1) { brakeAt = G.s[i]; break; }
+  return { vmin: R.v[iMin] * 3.6, gear: R.gear[iMin], brakeAt };
+}
+const gearTxt = g => g > 0 ? `${g}ª` : 'N';
+function renderAnalysis() {
+  const table = $('loss');
+  if (!REC || mode !== 'mine') {
+    if (REC) {
+      table.innerHTML = '';
+      $('summary').className = 'summary';
+      $('summary').innerHTML = `Elegí <b>Tuya</b> arriba (o una vuelta de la lista) para ver dónde perdés tiempo contra la vuelta ${MODE_NAME[other('mine')]}.`;
+    }
+    return;
+  }
+  const A = SIM, B = OTHER;
+  const ks = CORNERS.filter(k => !k.straight);
+  const bounds = ks.map(k => wrapL(k.a - 150));
+  const rows = ks.map((k, j) => {
+    const d0 = bounds[j], d1 = bounds[(j + 1) % ks.length];
+    const seg = R => { const a = tAt(R, d0), b = tAt(R, d1); return b >= a ? b - a : b + R.lapTime - a; };
+    const loss = seg(A) - seg(B);
+    const ma = cornerMetrics(A, k, d0), mb = cornerMetrics(B, k, d0);
+    const before = m => m.brakeAt == null || k.turnIn == null ? null : Math.round(wrapL(k.turnIn - m.brakeAt + 30) - 30);
+    const exitA = valAt(A.v, idxAtDist(d1), 0) * 3.6, exitB = valAt(B.v, idxAtDist(d1), 0) * 3.6;
+    return { k, loss, ma, mb, ba: before(ma), bb: before(mb), exitA, exitB, d0 };
+  });
+  const total = rows.reduce((s, r) => s + r.loss, 0);
+  const maxAbs = Math.max(0.05, ...rows.map(r => Math.abs(r.loss)));
+  const worst = rows.filter(r => r.loss > 0.05).sort((a, b) => b.loss - a.loss).slice(0, 3);
+  const vsName = MODE_NAME[other('mine')];
+  $('summary').className = 'summary';
+  const lapDiff = A.lapTime - B.lapTime;
+  $('summary').innerHTML = `Vuelta ${A.lapN}: <b>${fmtLap(A.lapTime)}</b> contra ${vsName} <b>${fmtLap(B.lapTime)}</b> `
+    + `(${lapDiff >= 0 ? '+' : '−'}${Math.abs(lapDiff).toFixed(3)} s). `
+    + (worst.length ? `Donde más perdés: ${worst.map(r => `<b>${r.k.name}</b> (+${r.loss.toFixed(2)} s)`).join(', ')}.` : 'No perdés más de 0,05 s en ninguna curva.');
+  const sign = x => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(2)}`;
+  const vs = (a, b, unit = '', better = 'high') => {
+    if (a == null) return `— <small>/ ${b == null ? '—' : b + unit}</small>`;
+    const cls = b == null ? '' : (better === 'high' ? a < b - 2 : a > b + 2) ? 'worse' : (better === 'high' ? a > b + 2 : a < b - 2) ? 'better' : '';
+    return `<span class="${cls}">${a}${unit}</span> <small>/ ${b == null ? '—' : b + unit}</small>`;
+  };
+  table.innerHTML = `<thead><tr><th>Curva</th><th>Tiempo vs ${vsName}</th><th>Mín. km/h</th><th>Frenada (m antes del giro)</th><th>Marcha</th><th>Salida km/h</th></tr></thead><tbody>`
+    + rows.map(r => `<tr data-d="${r.d0}"><td>${r.k.name}</td>
+      <td><span class="bar"><i class="${r.loss < 0 ? 'gain' : ''}" style="width:${Math.max(2, Math.abs(r.loss) / maxAbs * 90)}px"></i><span class="${r.loss > 0.05 ? 'worse' : r.loss < -0.05 ? 'better' : ''}">${sign(r.loss)} s</span></span></td>
+      <td>${vs(Math.round(r.ma.vmin), Math.round(r.mb.vmin))}</td>
+      <td>${vs(r.ba, r.bb, ' m', 'low')}</td>
+      <td>${gearTxt(r.ma.gear)} <small>/ ${gearTxt(r.mb.gear)}</small></td>
+      <td>${vs(Math.round(r.exitA), Math.round(r.exitB))}</td></tr>`).join('')
+    + `</tbody><tfoot><tr><td>Total</td><td colspan="5"><span class="${total > 0.05 ? 'worse' : total < -0.05 ? 'better' : ''}">${sign(total)} s</span></td></tr></tfoot>`;
+  table.querySelectorAll('tbody tr').forEach(tr => tr.addEventListener('click', () => {
+    seekDist(+tr.dataset.d);
+    $('map').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  }));
+}
+
 function setModeTo(m) {
   if (m === mode) return;
   const d = curDist(), L0 = lapLen();
@@ -545,6 +747,7 @@ function scheduleBestWing() {
 }
 function renderBest() {
   const el = $('best'), b = best[mode];
+  if (mode === 'mine') { el.innerHTML = '<span>La puesta a punto recalcula las vueltas simuladas; tu vuelta grabada queda como la manejaste.</span>'; return; }
   if (!b) { el.innerHTML = '<span>Buscando el mejor alerón…</span>'; return; }
   if (b.wing === opts.wing) { el.innerHTML = `<span>Mejor alerón para la vuelta ${MODE_NAME[mode]}: <b>${b.wing}</b> · ya lo estás usando</span>`; return; }
   const gain = SIM.lapTime - b.lap;
@@ -564,7 +767,11 @@ function locate(tAbs) {
   const f = Math.min(1, Math.max(0, (t - SIM.t[lo]) / (SIM.t[lo + 1] - SIM.t[lo])));
   return { lap, i: lo, f };
 }
-const posAt = (i, f) => { const j = (i + 1) % N; return [PX[i] + (PX[j] - PX[i]) * f, PZ[i] + (PZ[j] - PZ[i]) * f]; };
+const posIn = (R, i, f) => {
+  const X = R && R.px || PX, Z = R && R.pz || PZ, j = (i + 1) % N;
+  return [X[i] + (X[j] - X[i]) * f, Z[i] + (Z[j] - Z[i]) * f];
+};
+const posAt = (i, f) => posIn(SIM, i, f);
 const valAt = (arr, i, f) => arr[i] + (arr[(i + 1) % N] - arr[i]) * f;
 
 // ---------- cámara del mapa ----------
@@ -641,7 +848,7 @@ function locateIn(R, t) {
 function drawGhost(ctx) {
   const tIn = clock - Math.floor(clock / lapLen()) * lapLen();
   const p = locateIn(OTHER, tIn);
-  const [gx, gz] = posAt(p.i, p.f);
+  const [gx, gz] = posIn(OTHER, p.i, p.f);
   const [sx, sy] = toScreen(gx, gz);
   ctx.beginPath(); ctx.arc(sx, sy, 6.5, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(13,15,18,.7)'; ctx.fill();
@@ -664,6 +871,7 @@ function drawTrail(ctx, px) {
   const gA = A.lap * N + A.i + 1, gB = B.lap * N + B.i;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const W = (camMode === 'follow' ? 4.5 : 3.6) * px;
+  const RX = SIM.px || PX, RZ = SIM.pz || PZ;
   let [x, z] = posAt(A.i, A.f);
   let key = colorKey(A.i), alphaQ = -1;
   ctx.beginPath(); ctx.moveTo(x, z);
@@ -681,7 +889,7 @@ function drawTrail(ctx, px) {
   for (let g = gA; g <= gB; g++) {
     const i = g % N, k = colorKey((g - 1 + N) % N), q = fadeQ(g);
     if (k !== key || q !== alphaQ) { flush(); key = k; alphaQ = q; ctx.beginPath(); ctx.moveTo(x, z); }
-    x = PX[i]; z = PZ[i]; ctx.lineTo(x, z);
+    x = RX[i]; z = RZ[i]; ctx.lineTo(x, z);
   }
   const [ex, ez] = posAt(B.i, B.f);
   const k = colorKey(B.i);
@@ -806,7 +1014,7 @@ function updateHUD() {
   const v = valAt(SIM.v, i, f) * 3.6, thr = valAt(SIM.thr, i, f), brk = valAt(SIM.brk, i, f);
   const rpm = valAt(SIM.rpm, i, f), d = G.s[i] + f * G.ds[i];
   $('spd').textContent = Math.round(v);
-  $('gear').textContent = SIM.gear[i];
+  $('gear').textContent = SIM.gear[i] > 0 ? SIM.gear[i] : 'N';
   $('rpm').textContent = `${Math.round(rpm / 10) * 10} rpm`;
   $('rpmFill').style.width = `${Math.min(100, rpm / 8300 * 100)}%`;
   $('thrLvl').style.height = `${thr * 100}%`;
@@ -991,6 +1199,19 @@ segGroup('trail', v => { trailMode = v; });
 const setBoards = segGroup('boards', v => { showBoards = v === 'on'; });
 const setGhost = segGroup('ghost', v => { showGhost = v === 'on'; });
 const setMode = segGroup('mode', v => setModeTo(v));
+const setVs = segGroup('vs', v => { vsMode = v; applyMode(curDist(), lapLen()); });
+$('recFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const rec = JSON.parse(await file.text());
+    if (rec.track && rec.track !== 'spa') { $('recMeta').textContent = `Ese archivo es de ${rec.track}; esta página es de Spa.`; return; }
+    if (loadRecording(rec)) setMode('mine'); else $('recMeta').textContent = 'Ese archivo no tiene vueltas completas.';
+  } catch (err) {
+    $('recMeta').textContent = 'No se pudo leer el archivo: tiene que ser un .json de recordings/.';
+  }
+  e.target.value = '';
+});
 $('clear').addEventListener('click', () => { trailFrom = clock; });
 
 let scrubbing = false;
@@ -1073,7 +1294,7 @@ window.addEventListener('keydown', e => {
   else if (e.key === 'f' || e.key === 'F') setCam(camMode === 'follow' ? 'full' : 'follow');
   else if (e.key === 'c' || e.key === 'C') trailFrom = clock;
   else if (e.key === 'b' || e.key === 'B') setBoards(showBoards ? 'off' : 'on');
-  else if (e.key === 'm' || e.key === 'M') setMode(other(mode));
+  else if (e.key === 'm' || e.key === 'M') { const order = ['theory', 'human'].concat(SIMS.mine ? ['mine'] : []); setMode(order[(order.indexOf(mode) + 1) % order.length]); }
   else if (e.key === 'g' || e.key === 'G') setGhost(showGhost ? 'off' : 'on');
 });
 
@@ -1083,6 +1304,7 @@ new ResizeObserver(() => { resizeChart(); }).observe(chart);
 sizeGG();
 resizeMap(); resizeChart();
 runSim(false);
+if (RECORDING && loadRecording(RECORDING)) setMode('mine'); else renderLaps();
 Object.assign(cam, fitView());
 if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
 requestAnimationFrame(frame);

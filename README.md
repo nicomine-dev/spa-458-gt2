@@ -22,6 +22,20 @@ Atajos: `Espacio` pausa · `←` `→` ±1 s · `1`–`5` velocidad · `F` segui
 
 Assetto Corsa y sus contenidos son de Kunos Simulazioni. Proyecto personal sin fines comerciales.
 
+## Tus vueltas
+
+La página también muestra tus vueltas reales, grabadas de la telemetría que publica Assetto Corsa:
+
+```sh
+python tools/record.py   # con el juego abierto: graba cada vuelta en recordings/
+python tools/watch.py    # opcional: regenera la página al terminar cada vuelta (después F5)
+python tools/build.py -50
+```
+
+Con una sesión grabada aparece la versión **Tuya**: el punto recorre tu línea real con tus pedales, se compara contra la teórica, la humana o tu mejor vuelta (fantasma y delta en vivo), y una tabla muestra curva por curva cuánto tiempo perdés, tu velocidad mínima, dónde frenás, la marcha y la velocidad de salida contra la referencia. También se puede abrir otra sesión con “Cargar sesión…”.
+
+Tus datos quedan en `recordings/` y `mis-vueltas.js`, que no se suben al repo.
+
 ## App para Assetto Corsa (CSP)
 
 `cm-app/Trazada` es una app de Lua para Custom Shaders Patch. En carrera muestra:
