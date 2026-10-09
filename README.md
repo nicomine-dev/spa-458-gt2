@@ -18,7 +18,7 @@ Atajos: `Espacio` pausa · `←` `→` ±1 s · `1`–`5` velocidad · `F` segui
 
 - **Trazada y ancho de pista**: línea AI (`fast_lane.ai`) de Spa en Assetto Corsa.
 - **Auto**: parámetros físicos del Ferrari 458 GT2 de Assetto Corsa (curva de torque, relaciones de caja, freno motor, aerodinámica, gomas).
-- **Velocidad y pedales**: simulación cuasi-estática de vuelta (límite de adherencia con sensibilidad a la carga, motor, aero, pendientes y compresiones). Da una vuelta de ~2:18.8 con el piloto al 95 % del límite. Es una referencia para estudiar puntos de frenada y aceleración, no telemetría real.
+- **Velocidad y pedales**: simulación cuasi-estática de vuelta (límite de adherencia con sensibilidad a la carga, motor, aero, pendientes y compresiones). Tiene dos versiones: la **teórica** (límite físico puro, 2:16.342) y la **humana** (piloto simulado con tiempos de pie, margen y anticipación, 2:22.437), con fantasma y diferencia en vivo entre las dos. Es una referencia para estudiar puntos de frenada y aceleración, no telemetría real.
 
 Assetto Corsa y sus contenidos son de Kunos Simulazioni. Proyecto personal sin fines comerciales.
 

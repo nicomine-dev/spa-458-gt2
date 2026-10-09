@@ -62,6 +62,8 @@ h1 span { color: var(--accent); }
 .car b { font: 700 18px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; }
 .car small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
 .shield { width: 8px; align-self: stretch; border-radius: 2px; background: var(--accent); }
+.mode { display: grid; gap: 6px; }
+.seg-lg button { padding: 9px 16px; font: 700 15px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; }
 .laptime { text-align: right; }
 .laptime .eyebrow { display: block; }
 .laptime b { font: 700 40px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
@@ -166,6 +168,10 @@ h1 span { color: var(--accent); }
 .state { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 4px 10px; border-radius: 999px;
   font: 600 12px var(--display); letter-spacing: .12em; text-transform: uppercase; background: var(--panel-2); }
 .state i { width: 8px; height: 8px; border-radius: 50%; background: var(--coast); }
+.state-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.state-row .state { margin-top: 0; }
+.gap { font: 600 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); }
+.gap small { font: 500 11px var(--mono); color: var(--muted); margin-left: 4px; }
 
 .setup { display: grid; gap: 12px; }
 .field { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
@@ -173,6 +179,10 @@ h1 span { color: var(--accent); }
 .field output { font: 600 13px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
 .field input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
 .field small { grid-column: 1 / -1; color: var(--faint); font-size: 11.5px; line-height: 1.35; }
+.best { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted);
+  padding: 9px 10px; border: 1px dashed var(--line); border-radius: 6px; }
+.best b { color: var(--accent); font: 600 13px var(--mono); }
+.best button { padding: 5px 10px; font-size: 12px; }
 .setup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 12px var(--mono); color: var(--muted); }
 
 /* ---------- telemetría ---------- */
@@ -180,6 +190,9 @@ h1 span { color: var(--accent); }
 .tele-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
 .tele-head h2 { margin: 0; font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
 .tele-head span { font: 12px var(--mono); color: var(--faint); }
+.tele-head .ln { display: inline-block; width: 18px; height: 0; vertical-align: middle; margin: 0 6px 0 10px; }
+.ln.main { border-top: 2.5px solid var(--throttle); }
+.ln.alt { border-top: 1.5px dashed #aeb5be; }
 .chart-box { position: relative; height: 230px; margin-top: 10px; }
 #chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
 
@@ -222,8 +235,14 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
       <div class="shield" aria-hidden="true"></div>
       <div><b>Ferrari 458 GT2</b><small id="carMeta">1342 kg · ~420 CV · slicks SS</small></div>
     </div>
+    <div class="mode">
+      <span class="eyebrow">Versión de la vuelta</span>
+      <div class="seg seg-lg" id="mode">
+        <button data-v="theory" aria-pressed="true">Teórica</button><button data-v="human">Humana</button>
+      </div>
+    </div>
     <div class="laptime">
-      <span class="eyebrow">Vuelta simulada</span>
+      <span class="eyebrow" id="lapLabel">Óptimo teórico</span>
       <b id="lapTime">–:––.–––</b>
       <em id="lapDelta"></em>
     </div>
@@ -269,6 +288,12 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
             <button data-v="on" aria-pressed="true">Sí</button><button data-v="off">No</button>
           </div>
         </div>
+        <div class="ctl">
+          <span class="ctl-label">Fantasma</span>
+          <div class="seg" id="ghost">
+            <button data-v="on" aria-pressed="true">Sí</button><button data-v="off">No</button>
+          </div>
+        </div>
         <button class="ghost" id="clear">Borrar rastro</button>
         <div class="scrub">
           <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Posición en la vuelta">
@@ -289,7 +314,10 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
             <div class="rpm-meta"><span id="rpm">0 rpm</span><span>corte 8300</span></div>
           </div>
         </div>
-        <div class="state" id="state"><i></i><span>Suelta</span></div>
+        <div class="state-row">
+          <div class="state" id="state"><i></i><span>Suelta</span></div>
+          <span class="gap" id="gap"></span>
+        </div>
       </div>
 
       <div class="card">
@@ -318,9 +346,11 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
             <input type="range" id="grip" min="90" max="102" step="1" value="100">
           </div>
           <div class="field">
-            <label for="driver">Piloto (uso del límite)</label><output id="driverOut">95 %</output>
-            <input type="range" id="driver" min="85" max="100" step="1" value="95">
+            <label for="level">Nivel del piloto humano</label><output id="levelOut">93 %</output>
+            <input type="range" id="level" min="85" max="99" step="1" value="93">
+            <small>Grip que se anima a usar en curva. Solo cambia la vuelta humana; la teórica siempre usa el 100 %.</small>
           </div>
+          <div class="best" id="best" aria-live="polite"><span>Buscando el mejor alerón…</span></div>
           <div class="setup-foot"><span id="aeroMeta">ClA 2,72 · CdA 0,87</span><button class="ghost" id="reset">Valores base</button></div>
         </div>
       </div>
@@ -330,7 +360,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
   <section class="tele" aria-label="Telemetría de la vuelta">
     <div class="tele-head">
       <h2>Velocidad y pedales por distancia</h2>
-      <span id="teleMeta">clic o arrastrá para ir a un punto</span>
+      <span id="teleMeta"><span class="ln main"></span><span id="keyMain">Teórica</span><span class="ln alt"></span><span id="keyGhost">Humana</span> · clic o arrastrá para ir a un punto</span>
     </div>
     <div class="chart-box"><canvas id="chart"></canvas></div>
     <div class="corners" id="corners"></div>
@@ -338,10 +368,12 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); b
 
   <footer class="notes">
     <p><b>Trazada:</b> línea AI <code>fast_lane.ai</code> de Kunos para Spa en Assetto Corsa (4470 puntos, con el ancho real de pista a cada lado).</p>
-    <p><b>Velocidad y pedales:</b> simulación cuasi-estática de vuelta con la física del 458 GT2 de AC: curva de torque, 6 marchas + final 3,20, freno motor, carga aerodinámica por ala (frontal 2°, trasera regulable, difusor), slicks con sensibilidad a la carga, pendientes y compresiones de Eau Rouge. Es una referencia para estudiar puntos de frenada y aceleración, no telemetría real de un piloto.</p>
-    <p><b>Marchas:</b> siguen los puntos de cambio que Kunos le cargó a la IA de este auto en <code>ai.ini</code> (sube a 7150 rpm, baja por debajo de 4700 rpm).</p>
+    <p><b>Física (las dos versiones):</b> datos del 458 GT2 de AC: curva de torque, 6 marchas + final 3,20, corte a 8300 rpm, freno motor, carga aerodinámica por ala (frontal 2°, trasera regulable, difusor), slicks con sensibilidad a la carga, pendientes y compresiones de Eau Rouge.</p>
+    <p><b>Teórica:</b> el límite físico. Usa el 100 % del grip en curva, frenada y tracción, pasa de un pedal al otro al instante y usa siempre la marcha que más empuja (sube cerca del corte).</p>
+    <p><b>Humana:</b> un piloto simulado que maneja en el tiempo. Usa el grip elegido en curva (93 % por defecto), 6 puntos menos en frenada y 3 menos en tracción. Mira 0,3 s adelante, tarda 0,15 s en llegar a fondo de freno y 0,4 s en soltarlo, 0,4 s en pisar a fondo el acelerador y 0,1 s con los dos pies arriba al cambiar de pedal. En curvas rápidas donde baja menos de 25 km/h levanta en vez de frenar. Cambia como la IA de Kunos para este auto (<code>ai.ini</code>: sube a 7150 rpm, baja por debajo de 4700) con 0,08 s sin empuje en cada cambio. Estos tiempos son supuestos típicos de un buen piloto de simulador, no salen del juego.</p>
+    <p>Ninguna de las dos es telemetría real: sirven para estudiar puntos de frenada, aceleración y dónde se pierde tiempo.</p>
     <p><b>Carteles:</b> están a 200, 150, 100 y 50 m del punto de giro de cada curva con frenada, medido sobre la trazada (donde el radio baja de 450 m). Sirven de referencia y no copian la posición de los carteles reales de la pista. Solo se muestran los que entran en la recta anterior a la curva.</p>
-    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro · <kbd>B</kbd> carteles</p>
+    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro · <kbd>B</kbd> carteles · <kbd>M</kbd> teórica/humana · <kbd>G</kbd> fantasma</p>
   </footer>
 </div>
 
@@ -376,9 +408,12 @@ const CORNERS = [
 
 const G = buildGeometry(TRACK);
 const N = G.n;
-const BASE = { wing: 4, fuel: 30, grip: 100, driver: 95 };
-let opts = { ...BASE };
-let SIM = null, baseLap = 0;
+const BASE = { wing: 4, fuel: 30, grip: 100, level: 93 };
+const MODE_NAME = { theory: 'teórica', human: 'humana' };
+let opts = { ...BASE }, mode = 'theory', showGhost = true;
+let SIMS = {}, SIM = null, OTHER = null, baseLaps = null;
+const other = m => m === 'theory' ? 'human' : 'theory';
+const simOpts = (m, o = opts) => ({ mode: m, wing: o.wing, fuel: o.fuel, grip: o.grip / 100, level: o.level / 100 });
 
 // ---------- geometría del mapa ----------
 const PX = Float64Array.from(TRACK.x), PZ = Float64Array.from(TRACK.z);
@@ -456,24 +491,65 @@ function colorKey(i) {
 const colorOf = key => key === 'c' ? COAST : PALETTE[key[0]][+key.slice(1)];
 
 // ---------- simulación ----------
+function curDist() { return SIM ? G.s[cur.i] + cur.f * G.ds[cur.i] : 0; }
+function keepPlace(d) {
+  const i = idxAtDist(d), lap = Math.floor(clock / lapLen());
+  return lap * SIM.lapTime + SIM.t[i];
+}
 function runSim(keepDist) {
-  const d = SIM ? G.s[cur.i] + cur.f * G.ds[cur.i] : 0;
-  SIM = simulateLap(G, CAR_458, { wing: opts.wing, fuel: opts.fuel, grip: opts.grip / 100, driver: opts.driver / 100 });
-  if (!baseLap) baseLap = SIM.lapTime;
+  const d = curDist(), L0 = lapLen();
+  SIMS = { theory: simulateLap(G, CAR_458, simOpts('theory')), human: simulateLap(G, CAR_458, simOpts('human')) };
+  if (!baseLaps) baseLaps = { theory: SIMS.theory.lapTime, human: SIMS.human.lapTime };
+  applyMode(keepDist ? d : null, L0);
+  scheduleBestWing();
+}
+function applyMode(d, L0) {
+  const lapIdx = SIM ? Math.floor(clock / L0) : 0;
+  SIM = SIMS[mode]; OTHER = SIMS[other(mode)];
+  if (d != null) {
+    clock = lapIdx * SIM.lapTime + SIM.t[idxAtDist(d)];
+    trailFrom = Math.min(trailFrom, lapIdx * SIM.lapTime);
+    if (clock < trailFrom) trailFrom = lapIdx * SIM.lapTime;
+  }
+  $('lapLabel').textContent = mode === 'theory' ? 'Óptimo teórico' : 'Vuelta humana';
   $('lapTime').textContent = fmtLap(SIM.lapTime);
-  const delta = SIM.lapTime - baseLap;
-  $('lapDelta').textContent = Math.abs(delta) < 0.0005 ? 'setup base · tope ' + Math.round(SIM.vmax * 3.6) + ' km/h'
-    : (delta > 0 ? '+' : '−') + Math.abs(delta).toFixed(3) + ' s vs base · tope ' + Math.round(SIM.vmax * 3.6) + ' km/h';
+  const diff = OTHER.lapTime - SIM.lapTime;
+  const vsBase = SIM.lapTime - baseLaps[mode];
+  $('lapDelta').textContent = `${MODE_NAME[other(mode)]} ${fmtLap(OTHER.lapTime)} (${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(3)} s)`
+    + (Math.abs(vsBase) < 0.0005 ? '' : ` · ${vsBase > 0 ? '+' : '−'}${Math.abs(vsBase).toFixed(3)} s vs setup base`);
   $('aeroMeta').textContent = `ClA ${SIM.clA.toFixed(2).replace('.', ',')} · CdA ${SIM.cdA.toFixed(2).replace('.', ',')}`;
   $('carMeta').textContent = `${Math.round(SIM.mass)} kg con nafta · ~420 CV · slicks SS`;
-  if (keepDist) {
-    const i = idxAtDist(d), tIn = SIM.t[i];
-    const lap = Math.floor(clock / lapLen());
-    clock = lap * SIM.lapTime + tIn;
-    trailFrom = Math.min(trailFrom, clock);
-  }
+  $('keyMain').textContent = mode === 'theory' ? 'Teórica' : 'Humana';
+  $('keyGhost').textContent = mode === 'theory' ? 'Humana' : 'Teórica';
   buildCornerStats();
   drawChartBase();
+  renderBest();
+}
+function setModeTo(m) {
+  if (m === mode) return;
+  const d = curDist(), L0 = lapLen();
+  mode = m;
+  applyMode(d, L0);
+}
+
+// mejor alerón para la versión activa (se calcula aparte para no trabar los sliders)
+let bestTimer = 0, best = {};
+function scheduleBestWing() {
+  clearTimeout(bestTimer);
+  best = {};
+  renderBest();
+  bestTimer = setTimeout(() => {
+    for (const m of ['theory', 'human']) best[m] = bestWing(G, CAR_458, simOpts(m));
+    renderBest();
+  }, 250);
+}
+function renderBest() {
+  const el = $('best'), b = best[mode];
+  if (!b) { el.innerHTML = '<span>Buscando el mejor alerón…</span>'; return; }
+  if (b.wing === opts.wing) { el.innerHTML = `<span>Mejor alerón para la vuelta ${MODE_NAME[mode]}: <b>${b.wing}</b> · ya lo estás usando</span>`; return; }
+  const gain = SIM.lapTime - b.lap;
+  el.innerHTML = `<span>Mejor alerón para la vuelta ${MODE_NAME[mode]}: <b>${b.wing}</b> (−${gain.toFixed(3)} s)</span><button class="ghost" type="button" id="useBest">Usar</button>`;
+  $('useBest').addEventListener('click', () => { opts.wing = b.wing; $('wing').value = b.wing; $('wingOut').textContent = String(b.wing); runSim(true); });
 }
 const lapLen = () => SIM ? SIM.lapTime : 1;
 const fmtLap = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
@@ -546,12 +622,34 @@ function drawMap() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   drawLabels(ctx);
   if (showBoards) drawBoards(ctx);
+  if (showGhost) drawGhost(ctx);
   const [cx, cz] = posAt(cur.i, cur.f);
   const [sx, sy] = toScreen(cx, cz);
   const key = colorKey(cur.i);
   ctx.beginPath(); ctx.arc(sx, sy, 13, 0, Math.PI * 2); ctx.fillStyle = 'rgba(246,201,14,.16)'; ctx.fill();
   ctx.beginPath(); ctx.arc(sx, sy, 7.5, 0, Math.PI * 2); ctx.fillStyle = colorOf(key); ctx.fill();
   ctx.lineWidth = 2.5; ctx.strokeStyle = '#f6c90e'; ctx.stroke();
+}
+
+// posición de una vuelta en un instante dado (el fantasma arranca con el auto en cada vuelta)
+function locateIn(R, t) {
+  if (t >= R.lapTime) return { i: N - 1, f: 1 };
+  let lo = 0, hi = N - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (R.t[m] <= t) lo = m; else hi = m - 1; }
+  return { i: lo, f: Math.min(1, Math.max(0, (t - R.t[lo]) / (R.t[lo + 1] - R.t[lo]))) };
+}
+function drawGhost(ctx) {
+  const tIn = clock - Math.floor(clock / lapLen()) * lapLen();
+  const p = locateIn(OTHER, tIn);
+  const [gx, gz] = posAt(p.i, p.f);
+  const [sx, sy] = toScreen(gx, gz);
+  ctx.beginPath(); ctx.arc(sx, sy, 6.5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(13,15,18,.7)'; ctx.fill();
+  ctx.setLineDash([3, 2.5]); ctx.lineWidth = 2; ctx.strokeStyle = '#aeb5be'; ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = '600 10px "JetBrains Mono", Consolas, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(13,15,18,.85)';
+  const label = MODE_NAME[other(mode)].toUpperCase();
+  ctx.strokeText(label, sx + 10, sy - 10); ctx.fillStyle = '#aeb5be'; ctx.fillText(label, sx + 10, sy - 10);
 }
 
 function drawTrail(ctx, px) {
@@ -720,6 +818,8 @@ function updateHUD() {
   const intensity = m === 'b' ? brk : m === 't' ? thr : 0;
   st.querySelector('span').textContent = m === 'b' ? `Frena ${Math.round(brk * 100)} %` : m === 't' ? (thr > 0.97 ? 'A fondo' : `Acelera ${Math.round(thr * 100)} %`) : 'Suelta los pedales';
   st.querySelector('i').style.background = colorOf(colorKey(i));
+  const tA = valAt(SIM.t, i, f), tB = valAt(OTHER.t, i, f), dt = tA - tB;
+  $('gap').innerHTML = `${dt >= 0 ? '+' : '−'}${Math.abs(dt).toFixed(2).replace('.', ',')} s<small>vs ${MODE_NAME[other(mode)]}</small>`;
   const up = upcomingCorner(d);
   const gap = up ? ((up.turnIn - d) % G.length + G.length) % G.length : 0;
   $('next').innerHTML = !up ? '' : cornerAt(d) === up ? `giro en ${Math.round(gap)} m` : `<b>${up.name}</b> · giro en ${Math.round(gap)} m`;
@@ -765,6 +865,11 @@ function drawChartBase() {
   for (let v = 0; v <= vMax; v += 50) { c.beginPath(); c.moveTo(CP.l, y(v) + .5); c.lineTo(CW - CP.r, y(v) + .5); c.stroke(); c.fillText(v, CP.l - 6, y(v)); }
   c.textAlign = 'center';
   for (let km = 0; km <= 7; km++) { const x = cx(km * 1000); if (x > CW - CP.r) break; c.fillText(km + ' km', x, CH - 6); }
+  // la otra versión, fina y punteada debajo
+  c.lineWidth = 1.3; c.setLineDash([4, 3]); c.strokeStyle = 'rgba(174,181,190,.75)';
+  c.beginPath(); c.moveTo(cx(0), y(OTHER.v[0] * 3.6));
+  for (let i = 1; i < N; i++) c.lineTo(cx(G.s[i]), y(OTHER.v[i] * 3.6));
+  c.stroke(); c.setLineDash([]);
   // velocidad coloreada por pedal
   c.lineWidth = 2.2; c.lineJoin = 'round';
   let key = colorKey(0); c.beginPath(); c.moveTo(cx(0), y(SIM.v[0] * 3.6));
@@ -884,6 +989,8 @@ const setRate = segGroup('rate', v => rate = +v);
 const setCam = segGroup('cam', v => { camMode = v; userView = null; });
 segGroup('trail', v => { trailMode = v; });
 const setBoards = segGroup('boards', v => { showBoards = v === 'on'; });
+const setGhost = segGroup('ghost', v => { showGhost = v === 'on'; });
+const setMode = segGroup('mode', v => setModeTo(v));
 $('clear').addEventListener('click', () => { trailFrom = clock; });
 
 let scrubbing = false;
@@ -940,7 +1047,7 @@ const fields = [
   ['wing', v => v, v => String(v)],
   ['fuel', v => v, v => `${v} L`],
   ['grip', v => v, v => `${v} %`],
-  ['driver', v => v, v => `${v} %`],
+  ['level', v => v, v => `${v} %`],
 ];
 let simTimer = 0;
 for (const [id, parse, show] of fields) {
@@ -966,6 +1073,8 @@ window.addEventListener('keydown', e => {
   else if (e.key === 'f' || e.key === 'F') setCam(camMode === 'follow' ? 'full' : 'follow');
   else if (e.key === 'c' || e.key === 'C') trailFrom = clock;
   else if (e.key === 'b' || e.key === 'B') setBoards(showBoards ? 'off' : 'on');
+  else if (e.key === 'm' || e.key === 'M') setMode(other(mode));
+  else if (e.key === 'g' || e.key === 'G') setGhost(showGhost ? 'off' : 'on');
 });
 
 // ---------- arranque ----------
