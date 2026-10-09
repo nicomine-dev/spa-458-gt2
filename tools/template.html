@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spa · 458 GT2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Saira:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: pantalla de muro de boxes. Mapa grande a la izquierda, HUD de telemetría a la derecha,
+   traza de velocidad a lo ancho abajo. Un solo look oscuro a propósito: así el rastro de colores se lee. */
+:root {
+  color-scheme: dark;
+  --bg: #0d0f12;
+  --panel: #14171c;
+  --panel-2: #1a1e24;
+  --line: #262b33;
+  --fg: #e8eaed;
+  --muted: #8b939d;
+  --faint: #5b626c;
+  --asphalt: #262a30;
+  --edge: #48505a;
+  --accent: #f6c90e;        /* amarillo escudo: UI, punto y cursor; nunca compite con rojo/verde */
+  --throttle: #3cf06e;
+  --brake: #ff2b2b;
+  --coast: #9aa0a8;
+  --display: "Saira Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Saira", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 var(--body);
+  padding-inline: 16px;
+  padding-block: 14px 28px;
+  min-height: 100vh;
+}
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1480px; margin: 0 auto; display: grid; gap: 14px; }
+
+/* ---------- cabecera ---------- */
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 28px; }
+.brand { flex: 1 1 320px; min-width: 0; }
+.eyebrow {
+  font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+}
+h1 {
+  margin: 6px 0 0; font: 800 clamp(30px, 4.4vw, 52px)/0.95 var(--display); letter-spacing: -.01em;
+  text-transform: uppercase; text-wrap: balance;
+}
+h1 span { color: var(--accent); }
+.car {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--panel);
+}
+.car b { font: 700 18px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; }
+.car small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+.shield { width: 8px; align-self: stretch; border-radius: 2px; background: var(--accent); }
+.laptime { text-align: right; }
+.laptime .eyebrow { display: block; }
+.laptime b { font: 700 40px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.laptime em { display: block; font: 500 12px var(--mono); font-style: normal; color: var(--muted); min-height: 1.2em; }
+
+/* ---------- grilla principal ---------- */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }
+@media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.map-panel {
+  position: relative; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  background:
+    radial-gradient(1200px 600px at 30% 20%, #151a20 0%, transparent 60%),
+    var(--bg);
+  display: grid; grid-template-rows: minmax(0, 1fr) auto;
+}
+.map-box { position: relative; height: min(68vh, 760px); min-height: 360px; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#map.dragging { cursor: grabbing; }
+
+.legend {
+  position: absolute; left: 12px; bottom: 12px; display: grid; gap: 7px; padding: 10px 12px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; pointer-events: none;
+}
+.legend .row { display: grid; grid-template-columns: 74px 96px; align-items: center; gap: 10px; }
+.legend .ramp { height: 7px; border-radius: 4px; }
+.ramp.thr { background: linear-gradient(90deg, rgb(28,74,42), var(--throttle)); }
+.ramp.brk { background: linear-gradient(90deg, rgb(86,26,28), var(--brake)); }
+.ramp.cst { background: var(--coast); }
+.legend .scale { grid-column: 2; display: flex; justify-content: space-between; color: var(--faint); font: 10px var(--mono); margin-top: -4px; }
+
+.cam-hint {
+  position: absolute; right: 12px; top: 12px; font: 11px var(--mono); color: var(--faint); pointer-events: none;
+  text-align: right;
+}
+
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px;
+  border-top: 1px solid var(--line); background: var(--panel);
+}
+.play {
+  width: 44px; height: 38px; border-radius: 6px; border: 0; background: var(--accent); color: #111; cursor: pointer;
+  display: grid; place-items: center;
+}
+.play svg { width: 18px; height: 18px; fill: currentColor; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button {
+  border: 0; background: transparent; padding: 7px 10px; cursor: pointer; color: var(--muted);
+  font: 600 13px var(--mono); font-variant-numeric: tabular-nums;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--accent); }
+.seg button:hover { color: var(--fg); }
+.ctl-label { font: 600 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.ctl { display: flex; align-items: center; gap: 8px; }
+.ghost {
+  border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 7px 11px; cursor: pointer;
+  color: var(--muted); font-size: 13px;
+}
+.ghost:hover { color: var(--fg); border-color: var(--edge); }
+.scrub { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.scrub input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.scrub output { font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch; text-align: right; }
+
+/* ---------- HUD ---------- */
+.hud { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
+.card h2 { margin: 0 0 10px; font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+.corner { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.corner b { font: 700 26px/1.05 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.corner span { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+
+.dash { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; align-items: end; margin-top: 12px; }
+.speed { font: 700 76px/0.85 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+.speed small { font: 600 14px var(--display); letter-spacing: .12em; color: var(--muted); margin-left: 6px; }
+.gear {
+  font: 800 64px/0.85 var(--display); color: var(--accent); text-align: center; min-width: 56px;
+}
+.gear-l { font: 600 10px var(--display); letter-spacing: .16em; color: var(--faint); text-align: center; }
+.rpm { grid-column: 1 / -1; margin-top: 10px; }
+.rpm-bar { position: relative; height: 10px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.rpm-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #3d4450, #c9ced6 70%, var(--accent) 86%, var(--brake)); }
+.rpm-meta { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--faint); margin-top: 5px; font-variant-numeric: tabular-nums; }
+
+.pedals { display: grid; grid-template-columns: 1fr 1fr 118px; gap: 12px; align-items: stretch; }
+.pedal { display: grid; grid-template-rows: auto 1fr auto; gap: 6px; justify-items: center; }
+.pedal .lbl { font: 600 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.pedal .tube { width: 34px; height: 118px; border-radius: 5px; background: var(--panel-2); position: relative; overflow: hidden; }
+.pedal .lvl { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+.pedal.thr .lvl { background: var(--throttle); }
+.pedal.brk .lvl { background: var(--brake); }
+.pedal .pct { font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
+.gg { display: grid; justify-items: center; gap: 6px; }
+#gg { width: 118px; height: 118px; display: block; }
+.gg .lbl { font: 600 11px var(--display); letter-spacing: .14em; color: var(--muted); }
+.gg .val { font: 11px var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+
+.state { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 4px 10px; border-radius: 999px;
+  font: 600 12px var(--display); letter-spacing: .12em; text-transform: uppercase; background: var(--panel-2); }
+.state i { width: 8px; height: 8px; border-radius: 50%; background: var(--coast); }
+
+.setup { display: grid; gap: 12px; }
+.field { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.field label { font-size: 13px; }
+.field output { font: 600 13px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.field input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.field small { grid-column: 1 / -1; color: var(--faint); font-size: 11.5px; line-height: 1.35; }
+.setup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 12px var(--mono); color: var(--muted); }
+
+/* ---------- telemetría ---------- */
+.tele { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; min-width: 0; }
+.tele-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
+.tele-head h2 { margin: 0; font: 600 12px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.tele-head span { font: 12px var(--mono); color: var(--faint); }
+.chart-box { position: relative; height: 230px; margin-top: 10px; }
+#chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+
+.corners { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline; padding: 7px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; text-align: left; min-width: 0;
+}
+.chip:hover { border-color: var(--edge); }
+.chip[aria-current="true"] { border-color: var(--accent); }
+.chip .n { font: 600 11px var(--mono); color: var(--faint); }
+.chip b { font: 600 15px var(--display); letter-spacing: .02em; text-transform: uppercase; }
+.chip span { grid-column: 2; font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.notes { color: var(--muted); font-size: 12.5px; max-width: 110ch; display: grid; gap: 6px; }
+.notes p { margin: 0; }
+.notes b { color: var(--fg); font-weight: 500; }
+kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; color: var(--fg); }
+
+@media (max-width: 560px) {
+  .laptime { text-align: left; }
+  .map-box { height: 400px; min-height: 0; }
+  .legend { transform: scale(.82); transform-origin: bottom left; }
+  .cam-hint { display: none; }
+  .pedals { grid-template-columns: 1fr 1fr; }
+  .gg { grid-column: 1 / -1; }
+  .speed { font-size: 60px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Circuit de Spa-Francorchamps · Bélgica · sentido horario</div>
+      <h1>Spa <span>/</span> trazada ideal</h1>
+    </div>
+    <div class="car">
+      <div class="shield" aria-hidden="true"></div>
+      <div><b>Ferrari 458 GT2</b><small id="carMeta">1342 kg · ~420 CV · slicks SS</small></div>
+    </div>
+    <div class="laptime">
+      <span class="eyebrow">Vuelta simulada</span>
+      <b id="lapTime">–:––.–––</b>
+      <em id="lapDelta"></em>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="map-panel" aria-label="Mapa del circuito">
+      <div class="map-box">
+        <canvas id="map" aria-label="Mapa de Spa con la trazada ideal y el rastro del auto"></canvas>
+        <div class="legend" aria-hidden="true">
+          <div class="row"><span>Acelera</span><div class="ramp thr"></div></div>
+          <div class="row"><span>Suelta</span><div class="ramp cst"></div></div>
+          <div class="row"><span>Frena</span><div class="ramp brk"></div></div>
+          <div class="row"><span></span><div class="scale"><span>0 %</span><span>100 %</span></div></div>
+        </div>
+        <div class="cam-hint">rueda: zoom · arrastrar: mover<br>doble clic: ver pista completa</div>
+      </div>
+      <div class="controls">
+        <button class="play" id="play" aria-label="Pausar">
+          <svg id="playIcon" viewBox="0 0 20 20"><rect x="4" y="3" width="4" height="14"/><rect x="12" y="3" width="4" height="14"/></svg>
+        </button>
+        <div class="ctl">
+          <span class="ctl-label">Velocidad</span>
+          <div class="seg" id="rate">
+            <button data-v="0.25">¼×</button><button data-v="0.5">½×</button><button data-v="1" aria-pressed="true">1×</button><button data-v="2">2×</button><button data-v="4">4×</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label">Cámara</span>
+          <div class="seg" id="cam">
+            <button data-v="full" aria-pressed="true">Pista</button><button data-v="follow">Seguir</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="ctl-label">Rastro</span>
+          <div class="seg" id="trail">
+            <button data-v="lap" aria-pressed="true">Vuelta</button><button data-v="rolling">Continuo</button><button data-v="short">Estela</button>
+          </div>
+        </div>
+        <button class="ghost" id="clear">Borrar rastro</button>
+        <div class="scrub">
+          <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Posición en la vuelta">
+          <output id="scrubOut">0:00.0</output>
+        </div>
+      </div>
+    </section>
+
+    <aside class="hud">
+      <div class="card">
+        <div class="corner"><b id="cornerName">Recta principal</b><span id="dist">0 m</span></div>
+        <div class="dash">
+          <div class="speed"><span id="spd">0</span><small>KM/H</small></div>
+          <div><div class="gear" id="gear">1</div><div class="gear-l">MARCHA</div></div>
+          <div class="rpm">
+            <div class="rpm-bar"><div class="rpm-fill" id="rpmFill"></div></div>
+            <div class="rpm-meta"><span id="rpm">0 rpm</span><span>corte 8300</span></div>
+          </div>
+        </div>
+        <div class="state" id="state"><i></i><span>Suelta</span></div>
+      </div>
+
+      <div class="card">
+        <h2>Pedales y fuerzas g</h2>
+        <div class="pedals">
+          <div class="pedal thr"><span class="lbl">Acel.</span><div class="tube"><div class="lvl" id="thrLvl"></div></div><span class="pct" id="thrPct">0 %</span></div>
+          <div class="pedal brk"><span class="lbl">Freno</span><div class="tube"><div class="lvl" id="brkLvl"></div></div><span class="pct" id="brkPct">0 %</span></div>
+          <div class="gg"><span class="lbl">G-G</span><canvas id="gg"></canvas><span class="val" id="ggVal">0.0 lat · 0.0 lon</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Puesta a punto</h2>
+        <div class="setup">
+          <div class="field">
+            <label for="wing">Alerón trasero</label><output id="wingOut">4</output>
+            <input type="range" id="wing" min="0" max="10" step="1" value="4">
+            <small>Más ala: más rápido en Pouhon y Eau Rouge, más lento en Kemmel.</small>
+          </div>
+          <div class="field">
+            <label for="fuel">Nafta</label><output id="fuelOut">30 L</output>
+            <input type="range" id="fuel" min="5" max="110" step="5" value="30">
+          </div>
+          <div class="field">
+            <label for="grip">Grip de pista</label><output id="gripOut">100 %</output>
+            <input type="range" id="grip" min="90" max="102" step="1" value="100">
+          </div>
+          <div class="field">
+            <label for="driver">Piloto (uso del límite)</label><output id="driverOut">95 %</output>
+            <input type="range" id="driver" min="85" max="100" step="1" value="95">
+          </div>
+          <div class="setup-foot"><span id="aeroMeta">ClA 2,72 · CdA 0,87</span><button class="ghost" id="reset">Valores base</button></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="tele" aria-label="Telemetría de la vuelta">
+    <div class="tele-head">
+      <h2>Velocidad y pedales por distancia</h2>
+      <span id="teleMeta">clic o arrastrá para ir a un punto</span>
+    </div>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+    <div class="corners" id="corners"></div>
+  </section>
+
+  <footer class="notes">
+    <p><b>Trazada:</b> línea AI <code>fast_lane.ai</code> de Kunos para Spa en Assetto Corsa (4470 puntos, con el ancho real de pista a cada lado).</p>
+    <p><b>Velocidad y pedales:</b> simulación cuasi-estática de vuelta con la física del 458 GT2 de AC: curva de torque, 6 marchas + final 3,20, freno motor, carga aerodinámica por ala (frontal 2°, trasera regulable, difusor), slicks con sensibilidad a la carga, pendientes y compresiones de Eau Rouge. Es una referencia para estudiar puntos de frenada y aceleración, no telemetría real de un piloto.</p>
+    <p><b>Atajos:</b> <kbd>Espacio</kbd> pausa · <kbd>←</kbd> <kbd>→</kbd> ±1 s · <kbd>1</kbd>–<kbd>5</kbd> velocidad · <kbd>F</kbd> seguir auto · <kbd>C</kbd> borrar rastro</p>
+  </footer>
+</div>
+
+<script>
+const TRACK = /*__TRACK__*/;
+</script>
+<script>
+/*__SIM__*/
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+
+// ---------- curvas de Spa (distancias sobre la trazada AI) ----------
+const CORNERS = [
+  { n: 'T1',     name: 'La Source',          a: 250,  b: 520,  apex: 380 },
+  { n: 'T2–4',   name: 'Eau Rouge',          a: 950,  b: 1360, apex: 1130, label: 'Eau Rouge · Raidillon' },
+  { n: '',       name: 'Recta Kemmel',       a: 1360, b: 2260, apex: 1800, straight: true },
+  { n: 'T5–6',   name: 'Les Combes',         a: 2260, b: 2530, apex: 2425 },
+  { n: 'T7',     name: 'Malmedy',            a: 2530, b: 2720, apex: 2594 },
+  { n: 'T8',     name: 'Rivage',             a: 2880, b: 3140, apex: 3041 },
+  { n: 'T9',     name: 'Bruxelles',          a: 3140, b: 3400, apex: 3245, inside: true },
+  { n: 'T10–11', name: 'Pouhon',             a: 3650, b: 4200, apex: 3846 },
+  { n: 'T12–13', name: 'Les Fagnes',         a: 4380, b: 4720, apex: 4560 },
+  { n: 'T14',    name: 'Campus',             a: 4780, b: 5020, apex: 4931 },
+  { n: 'T15',    name: 'Stavelot',           a: 5020, b: 5300, apex: 5150 },
+  { n: 'T16',    name: 'Paul Frère',         a: 5300, b: 5650, apex: 5480 },
+  { n: 'T17',    name: 'Blanchimont',        a: 5950, b: 6320, apex: 6146 },
+  { n: 'T18–19', name: 'Chicane',            a: 6520, b: 6860, apex: 6755, label: 'Chicane (Bus Stop)' },
+];
+
+const G = buildGeometry(TRACK);
+const N = G.n;
+const BASE = { wing: 4, fuel: 30, grip: 100, driver: 95 };
+let opts = { ...BASE };
+let SIM = null, baseLap = 0;
+
+// ---------- geometría del mapa ----------
+const PX = Float64Array.from(TRACK.x), PZ = Float64Array.from(TRACK.z);
+const NX = new Float64Array(N), NZ = new Float64Array(N);   // normal hacia la derecha del sentido de marcha
+for (let i = 0; i < N; i++) {
+  const a = (i + 2) % N, b = (i - 2 + N) % N;
+  const tx = PX[a] - PX[b], tz = PZ[a] - PZ[b], l = Math.hypot(tx, tz) || 1;
+  NX[i] = -tz / l; NZ[i] = tx / l;
+}
+const SL = smooth(TRACK.l, 3), SR = smooth(TRACK.r, 3);
+function idxAtDist(d) {
+  d = ((d % G.length) + G.length) % G.length;
+  let lo = 0, hi = N - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (G.s[m] <= d) lo = m; else hi = m - 1; }
+  return lo;
+}
+const trackPath = new Path2D(), edgeL = new Path2D(), edgeR = new Path2D(), linePath = new Path2D();
+for (let i = 0; i <= N; i++) {
+  const k = i % N;
+  const lx = PX[k] - NX[k] * (SL[k] + 0.6), lz = PZ[k] - NZ[k] * (SL[k] + 0.6);
+  const rx = PX[k] + NX[k] * (SR[k] + 0.6), rz = PZ[k] + NZ[k] * (SR[k] + 0.6);
+  if (i === 0) { edgeL.moveTo(lx, lz); edgeR.moveTo(rx, rz); linePath.moveTo(PX[k], PZ[k]); }
+  else { edgeL.lineTo(lx, lz); edgeR.lineTo(rx, rz); linePath.lineTo(PX[k], PZ[k]); }
+}
+// cinta de asfalto: borde izquierdo de ida, borde derecho de vuelta
+for (let i = 0; i <= N; i++) {
+  const k = i % N, lx = PX[k] - NX[k] * (SL[k] + 0.6), lz = PZ[k] - NZ[k] * (SL[k] + 0.6);
+  i === 0 ? trackPath.moveTo(lx, lz) : trackPath.lineTo(lx, lz);
+}
+for (let i = N; i >= 0; i--) {
+  const k = i % N; trackPath.lineTo(PX[k] + NX[k] * (SR[k] + 0.6), PZ[k] + NZ[k] * (SR[k] + 0.6));
+}
+trackPath.closePath();
+
+let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+for (let i = 0; i < N; i++) { minX = Math.min(minX, PX[i]); maxX = Math.max(maxX, PX[i]); minZ = Math.min(minZ, PZ[i]); maxZ = Math.max(maxZ, PZ[i]); }
+const ROT = /*__ROT__*/0 * Math.PI / 180;
+const cosR = Math.cos(ROT), sinR = Math.sin(ROT);
+const rot = (x, z) => [x * cosR - z * sinR, x * sinR + z * cosR];
+let rb = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+for (let i = 0; i < N; i += 4) { const [x, z] = rot(PX[i], PZ[i]); rb.x0 = Math.min(rb.x0, x); rb.x1 = Math.max(rb.x1, x); rb.z0 = Math.min(rb.z0, z); rb.z1 = Math.max(rb.z1, z); }
+
+// ---------- colores del rastro ----------
+const LEVELS = 12;
+const mix = (a, b, t) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
+const THR_LO = [28, 74, 42], THR_HI = [60, 240, 110];
+const BRK_LO = [86, 26, 28], BRK_HI = [255, 43, 43];
+const COAST = 'rgb(154,160,168)';
+const PALETTE = { t: [], b: [] };
+for (let q = 0; q <= LEVELS; q++) { PALETTE.t.push(mix(THR_LO, THR_HI, q / LEVELS)); PALETTE.b.push(mix(BRK_LO, BRK_HI, q / LEVELS)); }
+const modeOf = i => SIM.brk[i] > 0.02 ? 'b' : SIM.thr[i] > 0.03 ? 't' : 'c';
+function colorKey(i) {
+  const m = modeOf(i);
+  if (m === 'c') return 'c';
+  const v = m === 'b' ? SIM.brk[i] : SIM.thr[i];
+  return m + Math.round(Math.min(1, v) * LEVELS);
+}
+const colorOf = key => key === 'c' ? COAST : PALETTE[key[0]][+key.slice(1)];
+
+// ---------- simulación ----------
+function runSim(keepDist) {
+  const d = SIM ? G.s[cur.i] + cur.f * G.ds[cur.i] : 0;
+  SIM = simulateLap(G, CAR_458, { wing: opts.wing, fuel: opts.fuel, grip: opts.grip / 100, driver: opts.driver / 100 });
+  if (!baseLap) baseLap = SIM.lapTime;
+  $('lapTime').textContent = fmtLap(SIM.lapTime);
+  const delta = SIM.lapTime - baseLap;
+  $('lapDelta').textContent = Math.abs(delta) < 0.0005 ? 'setup base · tope ' + Math.round(SIM.vmax * 3.6) + ' km/h'
+    : (delta > 0 ? '+' : '−') + Math.abs(delta).toFixed(3) + ' s vs base · tope ' + Math.round(SIM.vmax * 3.6) + ' km/h';
+  $('aeroMeta').textContent = `ClA ${SIM.clA.toFixed(2).replace('.', ',')} · CdA ${SIM.cdA.toFixed(2).replace('.', ',')}`;
+  $('carMeta').textContent = `${Math.round(SIM.mass)} kg con nafta · ~420 CV · slicks SS`;
+  if (keepDist) {
+    const i = idxAtDist(d), tIn = SIM.t[i];
+    const lap = Math.floor(clock / lapLen());
+    clock = lap * SIM.lapTime + tIn;
+    trailFrom = Math.min(trailFrom, clock);
+  }
+  buildCornerStats();
+  drawChartBase();
+}
+const lapLen = () => SIM ? SIM.lapTime : 1;
+const fmtLap = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
+
+// ---------- reloj de reproducción ----------
+let clock = 0, trailFrom = 0, playing = true, rate = 1, trailMode = 'lap', camMode = 'full';
+let cur = { i: 0, f: 0 };
+function locate(tAbs) {
+  const L = lapLen(), lap = Math.floor(tAbs / L), t = tAbs - lap * L;
+  let lo = 0, hi = N - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (SIM.t[m] <= t) lo = m; else hi = m - 1; }
+  const f = Math.min(1, Math.max(0, (t - SIM.t[lo]) / (SIM.t[lo + 1] - SIM.t[lo])));
+  return { lap, i: lo, f };
+}
+const posAt = (i, f) => { const j = (i + 1) % N; return [PX[i] + (PX[j] - PX[i]) * f, PZ[i] + (PZ[j] - PZ[i]) * f]; };
+const valAt = (arr, i, f) => arr[i] + (arr[(i + 1) % N] - arr[i]) * f;
+
+// ---------- cámara del mapa ----------
+const map = $('map'), mctx = map.getContext('2d');
+let MW = 0, MH = 0, DPR = 1;
+const cam = { x: 0, z: 0, s: 1 }, camTarget = { x: 0, z: 0, s: 1 };
+let followZoom = 3.2, userView = null;
+function fitView() {
+  const padX = MW < 600 ? 62 : 70, padY = 40, w = rb.x1 - rb.x0, h = rb.z1 - rb.z0;
+  const s = Math.min((MW - padX * 2) / w, (MH - padY * 2) / h);
+  return { x: (rb.x0 + rb.x1) / 2, z: (rb.z0 + rb.z1) / 2, s };
+}
+function resizeMap() {
+  const r = map.getBoundingClientRect(); DPR = Math.min(window.devicePixelRatio || 1, 2);
+  MW = r.width; MH = r.height; map.width = Math.round(MW * DPR); map.height = Math.round(MH * DPR);
+  if (camMode === 'full' && !userView) Object.assign(cam, fitView());
+}
+function applyCam(ctx) {
+  // mundo -> rotación -> escala -> centro de pantalla
+  const s = cam.s * DPR;
+  const a = cosR * s, b = sinR * s, c = -sinR * s, d = cosR * s;
+  ctx.setTransform(a, b, c, d, (MW / 2 - cam.x * cam.s) * DPR, (MH / 2 - cam.z * cam.s) * DPR);
+}
+function toScreen(x, z) { const [rx, rz] = rot(x, z); return [(rx - cam.x) * cam.s + MW / 2, (rz - cam.z) * cam.s + MH / 2]; }
+function toWorldRot(sx, sy) { return [(sx - MW / 2) / cam.s + cam.x, (sy - MH / 2) / cam.s + cam.z]; }
+
+// ---------- dibujo del mapa ----------
+function drawMap() {
+  const ctx = mctx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, map.width, map.height);
+  applyCam(ctx);
+  const px = 1 / cam.s;   // 1 píxel de pantalla en metros
+  ctx.fillStyle = '#262a30'; ctx.fill(trackPath);
+  ctx.lineWidth = 1.2 * px; ctx.strokeStyle = '#4a525c'; ctx.stroke(edgeL); ctx.stroke(edgeR);
+  ctx.setLineDash([4 * px, 5 * px]); ctx.lineWidth = 1.1 * px; ctx.strokeStyle = 'rgba(232,234,237,.22)'; ctx.stroke(linePath); ctx.setLineDash([]);
+
+  // línea de largada (cuadriculada)
+  {
+    const i = 0, w = SL[i] + SR[i] + 1.2, cells = 8, cw = w / cells, depth = Math.max(2.5, 3 * px);
+    const tx = NZ[i], tz = -NX[i];
+    for (let c = 0; c < cells; c++) for (let r = 0; r < 2; r++) {
+      const off = -SL[i] - 0.6 + c * cw;
+      const x0 = PX[i] + NX[i] * off + tx * (r * depth / 2), z0 = PZ[i] + NZ[i] * off + tz * (r * depth / 2);
+      ctx.fillStyle = (c + r) % 2 ? '#f2f2f2' : '#111';
+      ctx.beginPath(); ctx.moveTo(x0, z0); ctx.lineTo(x0 + NX[i] * cw, z0 + NZ[i] * cw);
+      ctx.lineTo(x0 + NX[i] * cw + tx * depth / 2, z0 + NZ[i] * cw + tz * depth / 2); ctx.lineTo(x0 + tx * depth / 2, z0 + tz * depth / 2); ctx.closePath(); ctx.fill();
+    }
+  }
+
+  drawTrail(ctx, px);
+
+  // etiquetas y auto en espacio de pantalla
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawLabels(ctx);
+  const [cx, cz] = posAt(cur.i, cur.f);
+  const [sx, sy] = toScreen(cx, cz);
+  const key = colorKey(cur.i);
+  ctx.beginPath(); ctx.arc(sx, sy, 13, 0, Math.PI * 2); ctx.fillStyle = 'rgba(246,201,14,.16)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(sx, sy, 7.5, 0, Math.PI * 2); ctx.fillStyle = colorOf(key); ctx.fill();
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#f6c90e'; ctx.stroke();
+}
+
+function drawTrail(ctx, px) {
+  const L = lapLen();
+  let t0;
+  if (trailMode === 'lap') t0 = Math.floor(clock / L) * L;
+  else if (trailMode === 'rolling') t0 = clock - L + 0.05;
+  else t0 = clock - 5;
+  t0 = Math.max(t0, trailFrom);
+  if (clock - t0 < 0.02) return;
+  const A = locate(t0), B = locate(clock);
+  const gA = A.lap * N + A.i + 1, gB = B.lap * N + B.i;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const W = (camMode === 'follow' ? 4.5 : 3.6) * px;
+  let [x, z] = posAt(A.i, A.f);
+  let key = colorKey(A.i), alphaQ = -1;
+  ctx.beginPath(); ctx.moveTo(x, z);
+  const flush = () => {
+    ctx.strokeStyle = colorOf(key); ctx.lineWidth = W;
+    ctx.globalAlpha = trailMode === 'short' ? Math.max(0.06, alphaQ / 8) : 1;
+    ctx.stroke();
+  };
+  const fadeQ = g => {
+    if (trailMode !== 'short') return 8;
+    const i = g % N, lap = Math.floor(g / N), age = clock - (lap * L + SIM.t[i]);
+    return Math.max(1, Math.round(8 * (1 - age / 5)));
+  };
+  alphaQ = fadeQ(gA);
+  for (let g = gA; g <= gB; g++) {
+    const i = g % N, k = colorKey((g - 1 + N) % N), q = fadeQ(g);
+    if (k !== key || q !== alphaQ) { flush(); key = k; alphaQ = q; ctx.beginPath(); ctx.moveTo(x, z); }
+    x = PX[i]; z = PZ[i]; ctx.lineTo(x, z);
+  }
+  const [ex, ez] = posAt(B.i, B.f);
+  const k = colorKey(B.i);
+  if (k !== key) { flush(); key = k; ctx.beginPath(); ctx.moveTo(x, z); }
+  ctx.lineTo(ex, ez); flush();
+  ctx.globalAlpha = 1;
+}
+
+function drawLabels(ctx) {
+  ctx.textBaseline = 'middle';
+  for (const c of CORNERS) {
+    const i = idxAtDist(c.apex);
+    const side = (c.straight ? 1 : (G.kappa[i] > 0 ? -1 : 1)) * (c.inside ? -1 : 1);   // afuera de la curva (salvo que choque con otro tramo)
+    const off = (c.straight ? 22 : 16) + (side < 0 ? SL[i] : SR[i]) * cam.s;
+    const [sx, sy] = toScreen(PX[i] + NX[i] * side * off / cam.s, PZ[i] + NZ[i] * side * off / cam.s);
+    if (sx < -60 || sy < -20 || sx > MW + 60 || sy > MH + 20) continue;
+    const [ax, ay] = toScreen(PX[i], PZ[i]);
+    const dx = sx - ax, dy = sy - ay;
+    ctx.textAlign = Math.abs(dx) < 8 ? 'center' : dx > 0 ? 'left' : 'right';
+    const active = cornerAt(G.s[cur.i]) === c;
+    ctx.font = `600 ${c.straight ? 11 : 12.5}px "Saira Condensed", "Arial Narrow", sans-serif`;
+    const label = (c.label || c.name).toUpperCase();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(13,15,18,.85)';
+    const ly = sy + (Math.abs(dx) < 8 ? Math.sign(dy) * 4 : 0);
+    ctx.strokeText(label, sx, ly);
+    ctx.fillStyle = active ? '#f6c90e' : c.straight ? '#5b626c' : '#aeb5be';
+    ctx.fillText(label, sx, ly);
+    if (c.n) {
+      ctx.font = '500 10px "JetBrains Mono", Consolas, monospace';
+      ctx.fillStyle = '#5b626c';
+      ctx.fillText(c.n, sx, ly + 12);
+    }
+  }
+}
+const cornerAt = d => CORNERS.find(c => d >= c.a && d < c.b) || null;
+
+// ---------- HUD ----------
+const gg = $('gg'), gctx = gg.getContext('2d');
+function sizeGG() { const d = Math.min(window.devicePixelRatio || 1, 2); gg.width = 118 * d; gg.height = 118 * d; gctx.setTransform(d, 0, 0, d, 0, 0); }
+function drawGG() {
+  const c = gctx, R = 54, cx = 59, cy = 59, sc = R / 3;
+  c.clearRect(0, 0, 118, 118);
+  c.strokeStyle = '#262b33'; c.lineWidth = 1;
+  for (const r of [1, 2, 3]) { c.beginPath(); c.arc(cx, cy, r * sc, 0, Math.PI * 2); c.stroke(); }
+  c.beginPath(); c.moveTo(cx - R, cy); c.lineTo(cx + R, cy); c.moveTo(cx, cy - R); c.lineTo(cx, cy + R); c.stroke();
+  c.fillStyle = '#5b626c'; c.font = '9px "JetBrains Mono", monospace'; c.textAlign = 'left'; c.fillText('2g', cx + 2 * sc + 2, cy - 4);
+  // estela de 1,5 s
+  const L = lapLen();
+  c.lineWidth = 1.5;
+  let first = true;
+  c.beginPath();
+  for (let k = 30; k >= 0; k--) {
+    const p = locate(Math.max(0, clock - k * 0.05));
+    const x = cx + valAt(SIM.gLat, p.i, p.f) * sc, y = cy - valAt(SIM.gLong, p.i, p.f) * sc;
+    first ? c.moveTo(x, y) : c.lineTo(x, y); first = false;
+  }
+  c.strokeStyle = 'rgba(246,201,14,.45)'; c.stroke();
+  const gl = valAt(SIM.gLat, cur.i, cur.f), gn = valAt(SIM.gLong, cur.i, cur.f);
+  c.beginPath(); c.arc(cx + Math.max(-3.2, Math.min(3.2, gl)) * sc, cy - Math.max(-3.2, Math.min(3.2, gn)) * sc, 4.5, 0, Math.PI * 2);
+  c.fillStyle = '#f6c90e'; c.fill();
+  $('ggVal').textContent = `${Math.abs(gl).toFixed(1)} lat · ${gn >= 0 ? '+' : '−'}${Math.abs(gn).toFixed(1)} lon`;
+}
+
+let lastCorner = undefined;
+function updateHUD() {
+  const { i, f } = cur;
+  const v = valAt(SIM.v, i, f) * 3.6, thr = valAt(SIM.thr, i, f), brk = valAt(SIM.brk, i, f);
+  const rpm = valAt(SIM.rpm, i, f), d = G.s[i] + f * G.ds[i];
+  $('spd').textContent = Math.round(v);
+  $('gear').textContent = SIM.gear[i];
+  $('rpm').textContent = `${Math.round(rpm / 10) * 10} rpm`;
+  $('rpmFill').style.width = `${Math.min(100, rpm / 8300 * 100)}%`;
+  $('thrLvl').style.height = `${thr * 100}%`;
+  $('brkLvl').style.height = `${brk * 100}%`;
+  $('thrPct').textContent = `${Math.round(thr * 100)} %`;
+  $('brkPct').textContent = `${Math.round(brk * 100)} %`;
+  $('dist').textContent = `${(d / 1000).toFixed(2).replace('.', ',')} km`;
+  const m = modeOf(i), st = $('state');
+  const intensity = m === 'b' ? brk : m === 't' ? thr : 0;
+  st.querySelector('span').textContent = m === 'b' ? `Frena ${Math.round(brk * 100)} %` : m === 't' ? (thr > 0.97 ? 'A fondo' : `Acelera ${Math.round(thr * 100)} %`) : 'Suelta los pedales';
+  st.querySelector('i').style.background = colorOf(colorKey(i));
+  const c = cornerAt(d);
+  if (c !== lastCorner) {
+    lastCorner = c;
+    $('cornerName').textContent = c ? (c.label || c.name) : (d < 250 || d > 6860 ? 'Recta principal' : 'Entre curvas');
+    document.querySelectorAll('.chip').forEach(ch => ch.setAttribute('aria-current', String(ch.dataset.name === (c && c.name))));
+  }
+  const L = lapLen();
+  $('scrubOut').textContent = `${Math.floor((clock % L) / 60)}:${((clock % L) % 60).toFixed(1).padStart(4, '0')}`;
+  if (!scrubbing) $('scrub').value = Math.round((clock % L) / L * 1000);
+  drawGG();
+}
+
+// ---------- telemetría ----------
+const chart = $('chart'), cctx = chart.getContext('2d');
+let CW = 0, CH = 0, CDPR = 1, chartBase = null;
+const CP = { l: 42, r: 12, t: 22, b: 54 };
+function resizeChart() {
+  const r = chart.getBoundingClientRect(); CDPR = Math.min(window.devicePixelRatio || 1, 2);
+  CW = r.width; CH = r.height; chart.width = Math.round(CW * CDPR); chart.height = Math.round(CH * CDPR);
+  if (SIM) drawChartBase();
+}
+const cx = d => CP.l + d / G.length * (CW - CP.l - CP.r);
+function drawChartBase() {
+  if (!CW) return;
+  chartBase = document.createElement('canvas'); chartBase.width = chart.width; chartBase.height = chart.height;
+  const c = chartBase.getContext('2d'); c.setTransform(CDPR, 0, 0, CDPR, 0, 0);
+  const plotH = CH - CP.t - CP.b, vMax = 300;
+  const y = v => CP.t + plotH * (1 - v / vMax);
+  // bandas de curvas
+  c.font = '600 10.5px "Saira Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  CORNERS.forEach((k, j) => {
+    if (k.straight) return;
+    c.fillStyle = j % 2 ? 'rgba(255,255,255,.025)' : 'rgba(255,255,255,.045)';
+    c.fillRect(cx(k.a), CP.t, cx(k.b) - cx(k.a), plotH);
+    c.fillStyle = '#5b626c';
+    if (cx(k.b) - cx(k.a) > 22) c.fillText((k.n || k.name).replace('–', '-'), (cx(k.a) + cx(k.b)) / 2, CP.t - 10);
+  });
+  // grilla
+  c.strokeStyle = '#21252c'; c.lineWidth = 1; c.fillStyle = '#5b626c'; c.font = '10px "JetBrains Mono", monospace'; c.textAlign = 'right';
+  for (let v = 0; v <= vMax; v += 50) { c.beginPath(); c.moveTo(CP.l, y(v) + .5); c.lineTo(CW - CP.r, y(v) + .5); c.stroke(); c.fillText(v, CP.l - 6, y(v)); }
+  c.textAlign = 'center';
+  for (let km = 0; km <= 7; km++) { const x = cx(km * 1000); if (x > CW - CP.r) break; c.fillText(km + ' km', x, CH - 6); }
+  // velocidad coloreada por pedal
+  c.lineWidth = 2.2; c.lineJoin = 'round';
+  let key = colorKey(0); c.beginPath(); c.moveTo(cx(0), y(SIM.v[0] * 3.6));
+  for (let i = 1; i < N; i++) {
+    const k = colorKey(i - 1);
+    if (k !== key) { c.strokeStyle = colorOf(key); c.stroke(); key = k; c.beginPath(); c.moveTo(cx(G.s[i - 1]), y(SIM.v[i - 1] * 3.6)); }
+    c.lineTo(cx(G.s[i]), y(SIM.v[i] * 3.6));
+  }
+  c.strokeStyle = colorOf(key); c.stroke();
+  // franjas de pedales
+  const yT = CH - CP.b + 12, hS = 12;
+  c.fillStyle = '#1a1e24'; c.fillRect(CP.l, yT, CW - CP.l - CP.r, hS); c.fillRect(CP.l, yT + hS + 4, CW - CP.l - CP.r, hS);
+  for (let i = 0; i < N; i++) {
+    const x0 = cx(G.s[i]), w = Math.max(1, cx(G.s[i] + G.ds[i]) - x0 + 0.5);
+    if (SIM.thr[i] > 0.01) { c.fillStyle = PALETTE.t[Math.round(SIM.thr[i] * LEVELS)]; c.fillRect(x0, yT + hS * (1 - SIM.thr[i]), w, hS * SIM.thr[i]); }
+    if (SIM.brk[i] > 0.01) { c.fillStyle = PALETTE.b[Math.round(SIM.brk[i] * LEVELS)]; c.fillRect(x0, yT + hS + 4 + hS * (1 - SIM.brk[i]), w, hS * SIM.brk[i]); }
+  }
+  c.textAlign = 'right'; c.fillStyle = '#5b626c'; c.font = '9.5px "JetBrains Mono", monospace';
+  c.fillText('ACEL', CP.l - 6, yT + hS / 2); c.fillText('FRENO', CP.l - 6, yT + hS * 1.5 + 4);
+  c.save(); c.translate(10, CP.t + plotH / 2); c.rotate(-Math.PI / 2); c.textAlign = 'center'; c.fillText('KM/H', 0, 0); c.restore();
+}
+function drawChart() {
+  if (!chartBase) return;
+  const c = cctx;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, chart.width, chart.height); c.drawImage(chartBase, 0, 0);
+  c.setTransform(CDPR, 0, 0, CDPR, 0, 0);
+  const d = G.s[cur.i] + cur.f * G.ds[cur.i], x = cx(d), v = valAt(SIM.v, cur.i, cur.f) * 3.6;
+  const plotH = CH - CP.t - CP.b, yv = CP.t + plotH * (1 - v / 300);
+  c.strokeStyle = 'rgba(246,201,14,.75)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x + .5, CP.t); c.lineTo(x + .5, CH - CP.b + 40); c.stroke();
+  c.beginPath(); c.arc(x, yv, 4.5, 0, Math.PI * 2); c.fillStyle = '#f6c90e'; c.fill();
+  c.font = '600 11px "JetBrains Mono", monospace'; c.textBaseline = 'bottom';
+  c.textAlign = x > CW - 90 ? 'right' : 'left';
+  c.fillText(`${Math.round(v)} km/h`, x + (x > CW - 90 ? -8 : 8), yv - 6);
+}
+
+// ---------- curvas: chips ----------
+function buildCornerStats() {
+  const box = $('corners'); box.innerHTML = '';
+  for (const k of CORNERS) {
+    if (k.straight) continue;
+    const ia = idxAtDist(k.a), ib = idxAtDist(k.b);
+    let iMin = ia;
+    for (let i = ia; i !== ib; i = (i + 1) % N) if (SIM.v[i] < SIM.v[iMin]) iMin = i;
+    // frenada propia de la curva: hacia atrás desde el vértice hasta volver a encontrar acelerador a fondo
+    let peak = 0, lifted = false;
+    for (let s = 0, i = iMin; s < 300; s++, i = (i - 1 + N) % N) {
+      if (SIM.thr[i] > 0.3 && peak === 0 && s > 3) break;
+      if (SIM.thr[i] > 0.3 && peak > 0) break;
+      peak = Math.max(peak, SIM.brk[i]);
+      if (SIM.brk[i] <= 0.02 && SIM.thr[i] <= 0.03) lifted = true;
+    }
+    const how = peak > 0.02 ? `frena ${Math.round(peak * 100)} %` : lifted ? 'levanta' : 'a fondo';
+    const btn = document.createElement('button');
+    btn.className = 'chip'; btn.dataset.name = k.name; btn.type = 'button';
+    btn.innerHTML = `<span class="n">${k.n}</span><b>${k.name}</b><span>${Math.round(SIM.v[iMin] * 3.6)} km/h · ${SIM.gear[iMin]}ª · ${how}</span>`;
+    btn.addEventListener('click', () => seekDist(Math.max(0, k.a - 120)));
+    box.appendChild(btn);
+  }
+  lastCorner = undefined;
+}
+
+function seekDist(d) {
+  const i = idxAtDist(d), L = lapLen(), lap = Math.floor(clock / L);
+  clock = lap * L + SIM.t[i];
+  if (clock < trailFrom) trailFrom = lap * L;
+  if (trailMode === 'lap') trailFrom = Math.min(trailFrom, clock);
+}
+
+// ---------- bucle ----------
+let lastTs = 0;
+function frame(ts) {
+  const dt = lastTs ? Math.min(0.1, (ts - lastTs) / 1000) : 0; lastTs = ts;
+  if (playing && !scrubbing) clock += dt * rate;
+  const p = locate(clock); cur = { i: p.i, f: p.f };
+  // cámara
+  if (camMode === 'follow') {
+    const [x, z] = posAt(cur.i, cur.f), [rx, rz] = rot(x, z);
+    Object.assign(camTarget, { x: rx, z: rz, s: fitView().s * followZoom });
+  } else Object.assign(camTarget, userView || fitView());
+  const k = 1 - Math.pow(0.0015, dt || 0.016);
+  const snap = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const key of ['x', 'z', 's']) cam[key] = snap ? camTarget[key] : cam[key] + (camTarget[key] - cam[key]) * k;
+  drawMap(); updateHUD(); drawChart();
+  requestAnimationFrame(frame);
+}
+
+// ---------- controles ----------
+function setPlaying(p) {
+  playing = p;
+  $('play').setAttribute('aria-label', p ? 'Pausar' : 'Reproducir');
+  $('playIcon').innerHTML = p ? '<rect x="4" y="3" width="4" height="14"/><rect x="12" y="3" width="4" height="14"/>' : '<path d="M5 3l12 7-12 7z"/>';
+}
+$('play').addEventListener('click', () => setPlaying(!playing));
+function segGroup(id, cb) {
+  const g = $(id);
+  g.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    cb(b.dataset.v);
+  });
+  return v => { const b = g.querySelector(`[data-v="${v}"]`); if (b) b.click(); };
+}
+const setRate = segGroup('rate', v => rate = +v);
+const setCam = segGroup('cam', v => { camMode = v; userView = null; });
+segGroup('trail', v => { trailMode = v; });
+$('clear').addEventListener('click', () => { trailFrom = clock; });
+
+let scrubbing = false;
+const scrub = $('scrub');
+scrub.addEventListener('input', () => {
+  scrubbing = true;
+  const L = lapLen(), lap = Math.floor(clock / L);
+  clock = lap * L + scrub.value / 1000 * L * 0.9999;
+  if (clock < trailFrom) trailFrom = lap * L;
+});
+scrub.addEventListener('change', () => { scrubbing = false; });
+scrub.addEventListener('pointerup', () => { scrubbing = false; });
+
+// gráfico: clic / arrastre
+let chartDrag = false;
+const chartSeek = e => {
+  const r = chart.getBoundingClientRect(), x = e.clientX - r.left;
+  seekDist(Math.max(0, Math.min(1, (x - CP.l) / (CW - CP.l - CP.r))) * G.length);
+};
+chart.addEventListener('pointerdown', e => { chartDrag = true; scrubbing = true; chart.setPointerCapture(e.pointerId); chartSeek(e); });
+chart.addEventListener('pointermove', e => { if (chartDrag) chartSeek(e); });
+chart.addEventListener('pointerup', () => { chartDrag = false; scrubbing = false; });
+
+// mapa: zoom y paneo
+map.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY * 0.0015);
+  if (camMode === 'follow') { followZoom = Math.max(1.2, Math.min(14, followZoom * f)); return; }
+  const r = map.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const [wx, wz] = toWorldRot(sx, sy);
+  const base = userView || { ...cam };
+  const s = Math.max(fitView().s * 0.8, Math.min(fitView().s * 25, base.s * f));
+  userView = { s, x: wx - (sx - MW / 2) / s, z: wz - (sy - MH / 2) / s };
+  Object.assign(cam, userView);
+}, { passive: false });
+let drag = null;
+map.addEventListener('pointerdown', e => {
+  drag = { x: e.clientX, y: e.clientY, view: userView || { ...cam } };
+  map.setPointerCapture(e.pointerId); map.classList.add('dragging');
+});
+map.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.hypot(dx, dy) < 3) return;
+  if (camMode === 'follow') setCam('full');
+  userView = { s: drag.view.s, x: drag.view.x - dx / drag.view.s, z: drag.view.z - dy / drag.view.s };
+  Object.assign(cam, userView);
+});
+map.addEventListener('pointerup', () => { drag = null; map.classList.remove('dragging'); });
+map.addEventListener('dblclick', () => { userView = null; setCam('full'); });
+
+// puesta a punto
+const fields = [
+  ['wing', v => v, v => String(v)],
+  ['fuel', v => v, v => `${v} L`],
+  ['grip', v => v, v => `${v} %`],
+  ['driver', v => v, v => `${v} %`],
+];
+let simTimer = 0;
+for (const [id, parse, show] of fields) {
+  const el = $(id);
+  el.addEventListener('input', () => {
+    opts[id] = parse(+el.value); $(id + 'Out').textContent = show(opts[id]);
+    clearTimeout(simTimer); simTimer = setTimeout(() => runSim(true), 40);
+  });
+}
+$('reset').addEventListener('click', () => {
+  opts = { ...BASE };
+  for (const [id, , show] of fields) { $(id).value = BASE[id]; $(id + 'Out').textContent = show(BASE[id]); }
+  runSim(true);
+});
+
+// teclado
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === 'ArrowRight') { clock += 1; }
+  else if (e.key === 'ArrowLeft') { clock = Math.max(0, clock - 1); if (clock < trailFrom) trailFrom = clock; }
+  else if (/^[1-5]$/.test(e.key)) setRate(['0.25', '0.5', '1', '2', '4'][+e.key - 1]);
+  else if (e.key === 'f' || e.key === 'F') setCam(camMode === 'follow' ? 'full' : 'follow');
+  else if (e.key === 'c' || e.key === 'C') trailFrom = clock;
+});
+
+// ---------- arranque ----------
+new ResizeObserver(() => { resizeMap(); }).observe(map);
+new ResizeObserver(() => { resizeChart(); }).observe(chart);
+sizeGG();
+resizeMap(); resizeChart();
+runSim(false);
+Object.assign(cam, fitView());
+if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
+requestAnimationFrame(frame);
+if (document.fonts) document.fonts.ready.then(() => drawChartBase());
+})();
+</script>
+</body>
+</html>
