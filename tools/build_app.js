@@ -76,9 +76,19 @@ const corners = list.map(c => {
     }
     let peak = 0;
     if (bs >= 0) for (let i = bs; i !== iMin; i = (i + 1) % n) peak = Math.max(peak, R.brk[i]);
+    // sin frenada: ¿levanta (más de ~12 m con los dos pedales sueltos) o va a fondo?
+    let action = 'brake';
+    if (bs < 0) {
+      let run = 0, longest = 0;
+      for (let i = idxAt(s[ti] - 250); i !== iMin; i = (i + 1) % n) {
+        if (R.thr[i] <= 0.03 && R.brk[i] <= 0.02) { run += ds[i]; longest = Math.max(longest, run); } else run = 0;
+      }
+      action = longest > 12 ? 'lift' : 'flat';
+    }
     out[mode] = {
       vmin: Math.round(R.v[iMin] * 3.6),
       gear: R.gear[iMin],
+      action,
       brakeAt: bs >= 0 ? +s[bs].toFixed(1) : null,
       brakePeak: Math.round(peak * 100),
     };
@@ -100,6 +110,26 @@ const ref = R => ({
 });
 const widths = line.l.map((l, i) => l + line.r[i]).sort((a, b) => a - b);
 
+// bordes de la pista: la línea AI ± el ancho a cada lado (suavizado), sobre la normal hacia la derecha
+const smoothArr = (a, h) => a.map((_, i) => { let t = 0; for (let k = -h; k <= h; k++) t += a[(i + k + n) % n]; return t / (2 * h + 1); });
+const SL = smoothArr(line.l, 3), SR = smoothArr(line.r, 3);
+const edges = { xl: [], zl: [], xr: [], zr: [], kerb: [] };
+for (const i of idx) {
+  const a = (i + 2) % n, b = (i - 2 + n) % n;
+  const tx = line.x[a] - line.x[b], tz = line.z[a] - line.z[b], l = Math.hypot(tx, tz) || 1;
+  const nx = -tz / l, nz = tx / l;
+  edges.xl.push(Math.round((line.x[i] - nx * (SL[i] + 0.6)) * 10) / 10);
+  edges.zl.push(Math.round((line.z[i] - nz * (SL[i] + 0.6)) * 10) / 10);
+  edges.xr.push(Math.round((line.x[i] + nx * (SR[i] + 0.6)) * 10) / 10);
+  edges.zr.push(Math.round((line.z[i] + nz * (SR[i] + 0.6)) * 10) / 10);
+  // pianos: del lado de adentro donde el radio baja de 220 m, y también afuera si baja de 120 m
+  const k = kappa[i], R = 1 / Math.max(Math.abs(k), 1e-6);
+  let kerb = 0;                               // 1 izquierda · 2 derecha · 3 los dos
+  if (R < 220) kerb |= k > 0 ? 2 : 1;
+  if (R < 120) kerb |= k > 0 ? 1 : 2;
+  edges.kerb.push(kerb);
+}
+
 const data = {
   format: 1,
   track, rot, length: +L.toFixed(1), width: Math.round(widths[widths.length >> 1]),
@@ -108,6 +138,7 @@ const data = {
   s: pick(s, x => Math.round(x * 10) / 10),
   x: idx.map(i => Math.round(line.x[i] * 10) / 10),
   z: idx.map(i => Math.round(line.z[i] * 10) / 10),
+  ...edges,
   boards: [200, 150, 100, 50],
   corners,
   theory: ref(runs.theory),
@@ -116,4 +147,5 @@ const data = {
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(data));
 console.log(`${track}: ${idx.length} muestras, ${corners.length} curvas, teórica ${data.theory.lap} s, humana ${data.human.lap} s -> ${path.relative(process.cwd(), outFile)} (${Math.round(fs.statSync(outFile).size / 1024)} KB)`);
-for (const c of corners) console.log(`  ${c.n.padEnd(7)} ${c.name.padEnd(12)} giro ${String(Math.round(c.turnIn)).padStart(5)} m  recta ${String(c.straight).padStart(3)} m  | T ${c.theory.vmin} km/h ${c.theory.gear}ª frena ${c.theory.brakeAt != null ? Math.round(wrap(c.turnIn - c.theory.brakeAt + 30) - 30) + ' m antes' : '—'}  | H ${c.human.vmin} km/h ${c.human.gear}ª frena ${c.human.brakeAt != null ? Math.round(wrap(c.turnIn - c.human.brakeAt + 30) - 30) + ' m antes' : '—'}`);
+const how = (c, r) => r.action === 'brake' ? `frena ${Math.round(wrap(c.turnIn - r.brakeAt + 30) - 30)} m antes` : r.action === 'lift' ? 'levanta' : 'a fondo';
+for (const c of corners) console.log(`  ${c.n.padEnd(7)} ${c.name.padEnd(12)} giro ${String(Math.round(c.turnIn)).padStart(5)} m  recta ${String(c.straight).padStart(3)} m  | T ${c.theory.vmin} km/h ${c.theory.gear}ª ${how(c, c.theory)}  | H ${c.human.vmin} km/h ${c.human.gear}ª ${how(c, c.human)}`);

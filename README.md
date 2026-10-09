@@ -26,12 +26,13 @@ Assetto Corsa y sus contenidos son de Kunos Simulazioni. Proyecto personal sin f
 
 `cm-app/Trazada` es una app de Lua para Custom Shaders Patch. En carrera muestra:
 
-- el mapa con la trazada de referencia coloreada por pedales (verde, gris, rojo con su intensidad) y tu auto como un punto relleno con lo que estás pisando vos;
+- el circuito con su ancho real, bordes y pianos, con la trazada de referencia encima coloreada por pedales (verde, gris, rojo con su intensidad) y tu auto como un punto relleno con lo que estás pisando vos;
 - la próxima curva, los metros que faltan al punto de giro y los carteles 200 / 150 / 100 / 50 que se encienden al pasarlos, con un aviso **FRENÁ** en el punto de frenada de referencia;
-- tu velocidad y marcha junto a las de referencia;
+- la frenada en grande ("FRENÁ A 70 m", con la cuenta regresiva y **¡FRENÁ!** al llegar), o "LEVANTÁ" / "A FONDO" si no hace falta frenar;
+- la velocidad y la marcha ideales en el punto donde estás;
 - una franja con los próximos 300 m de pedales.
 
-Se puede elegir referencia humana o teórica y mapa siguiendo al auto (gira con el rumbo) o pista completa.
+Se puede elegir referencia humana o teórica, mapa siguiendo al auto (gira con el rumbo) o pista completa, y la opacidad de la caja desde la configuración de la app.
 
 **Instalar:** copiar la carpeta `cm-app/Trazada` a `assettocorsa/apps/lua/` y abrirla desde la barra de apps del juego. Requiere CSP; está escrita contra la API de CSP 0.2.7.
 

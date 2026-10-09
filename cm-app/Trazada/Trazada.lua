@@ -11,9 +11,13 @@ local cfg = ac.storage({
   mode = 'human',    -- referencia: 'human' o 'theory'
   follow = true,     -- true: sigue al auto con zoom · false: pista completa
   headingUp = true,  -- con "seguir", el mapa gira para que el auto siempre vaya hacia arriba
-  span = 420,        -- metros que entran a lo ancho del mapa cuando sigue al auto
+  span = 300,        -- metros que entran a lo ancho del mapa cuando sigue al auto
   strip = true,      -- franja con los próximos 300 m
+  opacity = 0.9,     -- opacidad del fondo de la caja (0 = transparente)
 })
+
+-- el fondo propio de la ventana de CSP queda transparente: la caja la dibuja la app con la opacidad elegida
+ac.setWindowBackground('main', rgbm(0, 0, 0, 0))
 
 -- ---------- colores (los mismos tokens que la página) ----------
 local C = {
@@ -27,6 +31,10 @@ local C = {
   accent = rgbm(0.965, 0.788, 0.055, 1),
   dark = rgbm(0.051, 0.059, 0.071, 1),
   brake = rgbm(1, 0.169, 0.169, 1),
+  green = rgbm(0.235, 0.941, 0.431, 1),
+  edge = rgbm(0.86, 0.88, 0.9, 0.8),
+  kerbRed = rgbm(0.82, 0.16, 0.16, 1),
+  kerbWhite = rgbm(0.94, 0.94, 0.94, 1),
 }
 local LEVELS = 12
 local PAL = { [0] = rgbm(154 / 255, 160 / 255, 168 / 255, 1) }
@@ -143,6 +151,15 @@ local function cornerState(d)
   return best, bestGap, false
 end
 
+local function nextAhead(d)
+  local best, bestGap = nil, math.huge
+  for _, c in ipairs(D.corners) do
+    local gap = wrapD(c.turnIn - d)
+    if gap > 0 and gap < bestGap then best, bestGap = c, gap end
+  end
+  return best, bestGap
+end
+
 -- ---------- dibujo ----------
 local function text(str, size, pos, color, font)
   ui.pushDWriteFont(font or FONT_TXT)
@@ -161,13 +178,42 @@ local function pill(id, label, p1, w, h, active)
   return ui.invisibleButton(id, vec2(w, h))
 end
 
-local function drawPath(i0, count, stride, ref, width)
-  -- asfalto
-  for k = 0, count, stride do
-    local i = (i0 - 1 + k) % N + 1
-    ui.pathLineTo(proj(X[i], Z[i]))
+local q1, q2, q3, q4 = vec2(), vec2(), vec2(), vec2()
+local function projTo(v, x, z)
+  local rx, rz = rotXZ(x, z, P.ca, P.sa)
+  return v:set(P.ox + (rx - P.cx) * P.sc, P.oy + (rz - P.cz) * P.sc)
+end
+
+local function drawCircuit(i0, count, stride, ref, lineW)
+  local wide = D.xl ~= nil and D.width * P.sc >= 5
+  if wide then
+    -- asfalto con el ancho real: un cuadrilátero por tramo
+    for k = 0, count - stride, stride do
+      local i, j = (i0 - 1 + k) % N + 1, (i0 - 1 + k + stride) % N + 1
+      ui.drawQuadFilled(projTo(q1, D.xl[i], D.zl[i]), projTo(q2, D.xl[j], D.zl[j]),
+        projTo(q3, D.xr[j], D.zr[j]), projTo(q4, D.xr[i], D.zr[i]), C.asphalt)
+    end
+    -- bordes blancos; pianos rojo y blanco donde la curva es cerrada
+    local kerbW = math.max(2.5, 1.1 * P.sc)
+    for side = 1, 2 do
+      local EX, EZ = side == 1 and D.xl or D.xr, side == 1 and D.zl or D.zr
+      local bit = side == 1 and 1 or 2
+      for k = 0, count - stride, stride do
+        local i, j = (i0 - 1 + k) % N + 1, (i0 - 1 + k + stride) % N + 1
+        local kb = D.kerb[i]
+        local onKerb = kb == 3 or kb == bit
+        local col = onKerb and (i % 2 == 0 and C.kerbRed or C.kerbWhite) or C.edge
+        ui.drawLine(projTo(q1, EX[i], EZ[i]), projTo(q2, EX[j], EZ[j]), col, onKerb and kerbW or 1.2)
+      end
+    end
+  else
+    -- de lejos alcanza con una franja del ancho mínimo visible
+    for k = 0, count, stride do
+      local i = (i0 - 1 + k) % N + 1
+      ui.pathLineTo(proj(X[i], Z[i]))
+    end
+    ui.pathStroke(C.asphalt, false, math.max(5, D.width * P.sc))
   end
-  ui.pathStroke(C.asphalt, false, math.max(4, D.width * P.sc))
   -- trazada coloreada: un trazo por cada tramo del mismo color
   local codes = ref.code
   local prev = codes[i0]
@@ -177,16 +223,15 @@ local function drawPath(i0, count, stride, ref, width)
     ui.pathLineTo(proj(X[i], Z[i]))
     local c = codes[i]
     if c ~= prev then
-      ui.pathStroke(PAL[prev], false, width)
+      ui.pathStroke(PAL[prev], false, lineW)
       ui.pathLineTo(proj(X[i], Z[i]))
       prev = c
     end
   end
-  ui.pathStroke(PAL[prev], false, width)
+  ui.pathStroke(PAL[prev], false, lineW)
 end
 
 local function drawMap(p0, size, d, dt, ref, nextC)
-  ui.drawRectFilled(p0, p0 + size, C.bg, 6)
   ui.pushClipRect(p0, p0 + size, true)
 
   -- cámara: pista completa o siguiendo al auto (con giro según el rumbo)
@@ -218,9 +263,9 @@ local function drawMap(p0, size, d, dt, ref, nextC)
     local i0 = idxAt(wrapD(d - cfg.span * 0.8))
     local i1 = idxAt(wrapD(d + cfg.span * 1.6))
     local count = (i1 - i0) % N
-    drawPath(i0, count, 1, ref, 4)
+    drawCircuit(i0, count, 1, ref, 3)
   else
-    drawPath(1, N, 2, ref, 2.5)
+    drawCircuit(1, N, 2, ref, 2.5)
   end
 
   -- punto de giro de la próxima curva
@@ -299,19 +344,26 @@ function script.windowMain(dt)
     return
   end
 
+  -- opacidad de la caja: fondo y paneles; circuito, trazada y textos quedan sólidos
+  C.bg.mult = cfg.opacity
+  C.panel.mult = math.min(1, cfg.opacity * 1.06)
+
   local ref = D[cfg.mode] or D.human
   local d = wrapD(car.splinePosition * D.length)
   local c, gap, inside = cornerState(d)
+  local nc, ngap = nextAhead(d)
 
-  local hudH = cfg.strip and 172 or 146
+  local hudH = cfg.strip and 236 or 206
   local mapSize = vec2(W.x, math.max(120, W.y - hudH))
-  drawMap(vec2(0, 0), mapSize, d, dt, ref, c)
+  ui.drawRectFilled(vec2(0, 0), W, C.bg, 6)        -- la caja entera, con la opacidad elegida
+  drawMap(vec2(0, 0), mapSize, d, dt, ref, nc)
+  ui.drawLine(vec2(0, mapSize.y), vec2(W.x, mapSize.y), C.line, 1)
 
-  local y = mapSize.y + 10
   local pad = 12
   local cw = W.x - pad * 2
+  local y = mapSize.y + 10
 
-  -- curva: nombre y metros al giro
+  -- 1 · curva actual o próxima
   if c then
     local cr = c[cfg.mode] or c.human
     if inside then
@@ -319,53 +371,75 @@ function script.windowMain(dt)
       textIn(string.format('mín. %d km/h · %dª', cr.vmin, cr.gear), 12, vec2(pad, y), vec2(W.x - pad, y + 22), ui.Alignment.End, C.muted)
     else
       text(c.name:upper(), 17, vec2(pad, y), C.fg, FONT_NUM)
-      textIn(fmtDist(gap), 22, vec2(pad, y - 3), vec2(W.x - pad, y + 24), ui.Alignment.End, gap <= 220 and C.accent or C.fg, FONT_NUM)
+      textIn('giro en ' .. fmtDist(gap), 13, vec2(pad, y), vec2(W.x - pad, y + 22), ui.Alignment.End, gap <= 220 and C.accent or C.muted, FONT_NUM)
     end
-    y = y + 26
-    -- carteles 200 / 150 / 100 / 50: se encienden al pasarlos
-    local bw, bgap = (cw - 3 * 6) / 4 * 0.62, 6
+  end
+  y = y + 28
+
+  -- 2 · frenada de la próxima curva, en grande
+  ui.drawRectFilled(vec2(pad, y), vec2(W.x - pad, y + 58), C.panel, 5)
+  if nc then
+    local r = nc[cfg.mode] or nc.human
+    local label, big, bigCol, side, sideCol = '', '', C.fg, '', C.muted
+    if r.action == 'brake' and r.brakeAt then
+      local before = wrapD(nc.turnIn - r.brakeAt + 30) - 30
+      local toBrake = ngap - math.max(before, 0)
+      if toBrake > 0 then
+        label = 'FRENÁ A'
+        big = before > 2 and string.format('%d m', math.floor(before + 0.5)) or 'EL GIRO'
+        bigCol = C.fg
+        side = 'faltan ' .. fmtDist(toBrake)
+        sideCol = toBrake <= 100 and C.accent or C.muted
+      else
+        label, big, bigCol = 'AHORA', '¡FRENÁ!', C.brake
+        side = 'giro en ' .. fmtDist(ngap)
+      end
+      side = side .. string.format('\nhasta %d km/h · %dª', r.vmin, r.gear)
+    elseif r.action == 'lift' then
+      label, big, bigCol = 'SIN FRENO', 'LEVANTÁ', PAL[0]
+      side = string.format('giro en %s\nhasta %d km/h · %dª', fmtDist(ngap), r.vmin, r.gear)
+    else
+      label, big, bigCol = 'SIN FRENO', 'A FONDO', C.green
+      side = string.format('giro en %s\n%d km/h · %dª', fmtDist(ngap), r.vmin, r.gear)
+    end
+    text(label .. ' · ' .. nc.name:upper(), 10.5, vec2(pad + 10, y + 6), C.muted, FONT_BOLD)
+    text(big, 30, vec2(pad + 9, y + 18), bigCol, FONT_NUM)
+    ui.pushDWriteFont(FONT_TXT)
+    ui.dwriteDrawTextClipped(side, 11.5, vec2(pad, y + 18), vec2(W.x - pad - 10, y + 54), ui.Alignment.End, ui.Alignment.Center, false, sideCol)
+    ui.popDWriteFont()
+  end
+  y = y + 66
+
+  -- 3 · carteles 200 / 150 / 100 / 50 de la próxima curva: se encienden al pasarlos
+  if nc then
+    local bgap = 6
+    local bw = (cw - bgap * 3) / 4
     local bx = pad
     for _, b in ipairs(D.boards) do
-      local exists = b <= c.straight + 10
-      local passed = not inside and gap <= b
-      local col = not exists and C.panel or passed and C.accent or C.panel
-      ui.drawRectFilled(vec2(bx, y), vec2(bx + bw, y + 18), col, 3)
-      if exists and not passed and gap <= b + 120 and not inside then ui.drawRect(vec2(bx, y), vec2(bx + bw, y + 18), C.accent, 3, nil, 1) end
-      textIn(tostring(b), 11, vec2(bx, y), vec2(bx + bw, y + 18), ui.Alignment.Center,
+      local exists = b <= nc.straight + 10
+      local passed = ngap <= b
+      local col = exists and passed and C.accent or C.panel
+      ui.drawRectFilled(vec2(bx, y), vec2(bx + bw, y + 20), col, 3)
+      if exists and not passed and ngap <= b + 120 then ui.drawRect(vec2(bx, y), vec2(bx + bw, y + 20), C.accent, 3, nil, 1) end
+      textIn(tostring(b), 12, vec2(bx, y), vec2(bx + bw, y + 20), ui.Alignment.Center,
         not exists and C.line or passed and C.dark or C.fg, FONT_NUM)
       bx = bx + bw + bgap
     end
-    -- frenada de referencia
-    local hint
-    if cr.brakeAt then
-      local before = wrapD(c.turnIn - cr.brakeAt + 30) - 30
-      hint = before > 2 and string.format('frená a %d m', math.floor(before + 0.5)) or 'frena en la curva'
-      if not inside and gap <= before and gap > 0 then hint = 'FRENÁ' end
-    else
-      hint = 'sin freno'
-    end
-    textIn(hint, 12, vec2(bx, y), vec2(W.x - pad, y + 18), ui.Alignment.End, hint == 'FRENÁ' and C.brake or C.muted, hint == 'FRENÁ' and FONT_BOLD or FONT_TXT)
-    y = y + 28
   end
+  y = y + 28
 
-  -- velocidad y marcha (tuyas) con la referencia al lado
+  -- 4 · velocidad y marcha ideales en este punto
   local refV = refAt(ref.v, d)
   local refG = ref.gear[idxAt(d)]
-  local spd = car.speedKmh
-  text(string.format('%d', math.floor(spd + 0.5)), 40, vec2(pad - 2, y - 6), C.fg, FONT_NUM)
-  local dv = spd - refV
-  text(string.format('km/h · ref %d (%s%d)', math.floor(refV + 0.5), dv >= 0 and '+' or '−', math.floor(math.abs(dv) + 0.5)),
-    11.5, vec2(pad, y + 38), C.muted)
-  local gear = car.gear
-  local gTxt = gear == 0 and 'N' or gear < 0 and 'R' or tostring(gear)
-  textIn(gTxt, 40, vec2(W.x - pad - 90, y - 8), vec2(W.x - pad, y + 38), ui.Alignment.End, C.accent, FONT_NUM)
-  textIn(string.format('ref %dª', refG), 11.5, vec2(W.x - pad - 90, y + 38), vec2(W.x - pad, y + 52), ui.Alignment.End,
-    refG ~= gear and C.fg or C.muted, refG ~= gear and FONT_BOLD or FONT_TXT)
-  y = y + 58
+  text(string.format('%d', math.floor(refV + 0.5)), 40, vec2(pad - 2, y - 4), C.fg, FONT_NUM)
+  text('km/h ideal', 11.5, vec2(pad, y + 42), C.muted)
+  textIn(string.format('%dª', refG), 40, vec2(W.x - pad - 90, y - 6), vec2(W.x - pad, y + 40), ui.Alignment.End, C.accent, FONT_NUM)
+  textIn('marcha ideal', 11.5, vec2(W.x - pad - 120, y + 42), vec2(W.x - pad, y + 56), ui.Alignment.End, C.muted)
+  y = y + 62
 
-  -- próximos 300 m
+  -- 5 · próximos 300 m
   if cfg.strip then
-    drawStrip(vec2(pad, y + 4), cw, 10, d, ref, c)
+    drawStrip(vec2(pad, y + 4), cw, 10, d, ref, nc)
     text('ahora', 9.5, vec2(pad, y + 16), C.faint)
     textIn('300 m', 9.5, vec2(pad, y + 16), vec2(W.x - pad, y + 28), ui.Alignment.End, C.faint)
   end
@@ -381,6 +455,9 @@ function script.windowSettings()
   if ui.checkbox('Girar el mapa con el auto', cfg.headingUp) then cfg.headingUp = not cfg.headingUp end
   cfg.span = ui.slider('##span', cfg.span, 150, 1200, 'Zoom: %.0f m de ancho')
   if ui.checkbox('Franja de los próximos 300 m', cfg.strip) then cfg.strip = not cfg.strip end
+  ui.offsetCursorY(6)
+  ui.text('Caja')
+  cfg.opacity = ui.slider('##opacity', cfg.opacity * 100, 0, 100, 'Opacidad del fondo: %.0f %%') / 100
   if D then
     ui.offsetCursorY(6)
     ui.textWrapped(string.format('Datos: %s · %d curvas · referencia calculada para %s.', dataName, #D.corners, D.carName))
