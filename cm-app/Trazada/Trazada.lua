@@ -14,6 +14,12 @@ local cfg = ac.storage({
   span = 300,        -- metros que entran a lo ancho del mapa cuando sigue al auto
   strip = true,      -- franja con los próximos 300 m
   opacity = 0.9,     -- opacidad del fondo de la caja (0 = transparente)
+  line = true,        -- trazada dibujada sobre la pista
+  lineMode = 'theory', -- qué referencia se dibuja en la pista
+  lineWidth = 0.9,    -- metros de ancho de la cinta
+  lineAhead = 300,    -- metros hacia adelante que se dibujan
+  lineAlpha = 0.75,   -- opacidad de la cinta
+  brakeBars = true,   -- barra roja cruzada en cada punto de frenada
 })
 
 -- el fondo propio de la ventana de CSP queda transparente: la caja la dibuja la app con la opacidad elegida
@@ -158,6 +164,80 @@ local function nextAhead(d)
     if gap > 0 and gap < bestGap then best, bestGap = c, gap end
   end
   return best, bestGap
+end
+
+-- ---------- trazada sobre la pista (3D) ----------
+-- La cinta sigue la línea AI y se apoya en el asfalto: cada punto se ajusta con un rayo hacia abajo
+-- la primera vez que se dibuja. Los colores son los mismos que en el mapa.
+local Y3, NX3, NZ3 = nil, nil, nil
+local function prepare3D()
+  Y3, NX3, NZ3 = {}, {}, {}
+  local from, dir, hit = vec3(), vec3(0, -1, 0), vec3()
+  for i = 1, N do
+    local a, b = i < N and i + 1 or 1, i > 1 and i - 1 or N
+    local tx, tz = X[a] - X[b], Z[a] - Z[b]
+    local l = math.sqrt(tx * tx + tz * tz)
+    if l < 1e-6 then l = 1 end
+    NX3[i], NZ3[i] = -tz / l, tx / l
+    local y = D.y and D.y[i] or car.position.y
+    from:set(X[i], y + 3, Z[i])
+    local dist = physics.raycastTrack(from, dir, 8, hit)
+    Y3[i] = dist >= 0 and hit.y or y
+  end
+end
+
+local q3 = { vec3(), vec3(), vec3(), vec3() }
+local lineColor = rgbm(1, 1, 1, 1)
+local function quad(x1, y1, z1, x2, y2, z2, nx1, nz1, nx2, nz2, half, lift, color)
+  render.glSetColor(color)
+  render.glBegin(render.GLPrimitiveType.Quads)
+  render.glVertex(q3[1]:set(x1 - nx1 * half, y1 + lift, z1 - nz1 * half))
+  render.glVertex(q3[2]:set(x2 - nx2 * half, y2 + lift, z2 - nz2 * half))
+  render.glVertex(q3[3]:set(x2 + nx2 * half, y2 + lift, z2 + nz2 * half))
+  render.glVertex(q3[4]:set(x1 + nx1 * half, y1 + lift, z1 + nz1 * half))
+  render.glEnd()
+end
+
+function script.draw3D()
+  if not D or not cfg.line then return end
+  if not Y3 then prepare3D() end
+  local ref = D[cfg.lineMode] or D.theory
+  local codes = ref.code
+  local d = wrapD(car.splinePosition * D.length)
+  local i0 = idxAt(wrapD(d - 12))
+  local count = (idxAt(wrapD(d + cfg.lineAhead)) - i0) % N
+  local half = cfg.lineWidth / 2
+  render.setBlendMode(render.BlendMode.AlphaBlend)
+  render.setDepthMode(render.DepthMode.ReadOnlyLessEqual)
+  render.setCullMode(render.CullMode.None)
+  for k = 0, count - 1 do
+    local i = (i0 - 1 + k) % N + 1
+    local j = i < N and i + 1 or 1
+    -- se desvanece al final de lo que se dibuja y justo detrás del auto
+    local ahead = wrapD(S[i] - d + 12)
+    local fade = math.min(1, ahead / 12, (cfg.lineAhead + 12 - ahead) / 60)
+    if fade > 0 then
+      local c = PAL[codes[i]]
+      lineColor.r, lineColor.g, lineColor.b, lineColor.mult = c.r, c.g, c.b, cfg.lineAlpha * fade
+      quad(X[i], Y3[i], Z[i], X[j], Y3[j], Z[j], NX3[i], NZ3[i], NX3[j], NZ3[j], half, 0.04, lineColor)
+    end
+  end
+  -- punto de frenada de cada curva que entra en lo que se dibuja: barra roja de lado a lado de la cinta
+  if cfg.brakeBars then
+    for _, c in ipairs(D.corners) do
+      local r = c[cfg.lineMode] or c.theory
+      if r and r.action == 'brake' and r.brakeAt then
+        local ahead = wrapD(r.brakeAt - d)
+        if ahead < cfg.lineAhead then
+          local i = idxAt(r.brakeAt)
+          local j = i < N and i + 1 or 1
+          lineColor.r, lineColor.g, lineColor.b, lineColor.mult = 1, 0.17, 0.17, math.min(1, cfg.lineAlpha + 0.2)
+          quad(X[i], Y3[i], Z[i], X[j], Y3[j], Z[j], NX3[i], NZ3[i], NX3[j], NZ3[j], half * 2.2, 0.05, lineColor)
+        end
+      end
+    end
+  end
+  render.setDepthMode(render.DepthMode.Normal)
 end
 
 -- ---------- dibujo ----------
@@ -455,6 +535,17 @@ function script.windowSettings()
   if ui.checkbox('Girar el mapa con el auto', cfg.headingUp) then cfg.headingUp = not cfg.headingUp end
   cfg.span = ui.slider('##span', cfg.span, 150, 1200, 'Zoom: %.0f m de ancho')
   if ui.checkbox('Franja de los próximos 300 m', cfg.strip) then cfg.strip = not cfg.strip end
+  ui.offsetCursorY(6)
+  ui.text('Trazada en la pista')
+  if ui.checkbox('Dibujar la trazada sobre el asfalto', cfg.line) then cfg.line = not cfg.line end
+  if ui.radioButton('Teórica##line', cfg.lineMode == 'theory') then cfg.lineMode = 'theory' end
+  ui.sameLine()
+  if ui.radioButton('Humana##line', cfg.lineMode == 'human') then cfg.lineMode = 'human' end
+  cfg.lineWidth = ui.slider('##lineWidth', cfg.lineWidth, 0.3, 2, 'Ancho: %.1f m')
+  cfg.lineAhead = ui.slider('##lineAhead', cfg.lineAhead, 80, 600, 'Hacia adelante: %.0f m')
+  cfg.lineAlpha = ui.slider('##lineAlpha', cfg.lineAlpha * 100, 15, 100, 'Opacidad: %.0f %%') / 100
+  if ui.checkbox('Barra roja en cada punto de frenada', cfg.brakeBars) then cfg.brakeBars = not cfg.brakeBars end
+  ui.textWrapped('Apagá la línea ideal de Assetto Corsa (Ayudas → Línea ideal) para no ver dos.')
   ui.offsetCursorY(6)
   ui.text('Caja')
   cfg.opacity = ui.slider('##opacity', cfg.opacity * 100, 0, 100, 'Opacidad del fondo: %.0f %%') / 100

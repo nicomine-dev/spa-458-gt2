@@ -138,6 +138,7 @@ const data = {
   s: pick(s, x => Math.round(x * 10) / 10),
   x: idx.map(i => Math.round(line.x[i] * 10) / 10),
   z: idx.map(i => Math.round(line.z[i] * 10) / 10),
+  y: idx.map(i => Math.round(line.y[i] * 100) / 100),   // altura de la línea AI (la app la ajusta al asfalto con un rayo)
   ...edges,
   boards: [200, 150, 100, 50],
   corners,
