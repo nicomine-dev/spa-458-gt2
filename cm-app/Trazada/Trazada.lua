@@ -20,6 +20,8 @@ local cfg = ac.storage({
   lineAhead = 300,    -- metros hacia adelante que se dibujan
   lineAlpha = 0.75,   -- opacidad de la cinta
   brakeBars = true,   -- barra roja cruzada en cada punto de frenada
+  replaySpeed = 1,    -- velocidad del replay (0.5, 1 o 2)
+  replayCam = 'chase', -- cámara del replay: 'chase' (atrás) o 'heli' (arriba)
 })
 
 -- el fondo propio de la ventana de CSP queda transparente: la caja la dibuja la app con la opacidad elegida
@@ -85,6 +87,11 @@ local function loadData()
     local r, codes = d[m], {}
     for i = 1, N do codes[i] = pedalCode(r.thr[i], r.brk[i]) end
     r.code = codes
+    -- tiempo en cada muestra, integrando la velocidad de referencia: lo usa el replay
+    local tt = { 0 }
+    for i = 1, N - 1 do tt[i + 1] = tt[i] + (S[i + 1] - S[i]) / math.max((r.v[i] + r.v[i + 1]) / 7.2, 1) end
+    r.t = tt
+    r.tLap = tt[N] + (d.length - S[N]) / math.max(r.v[N] / 3.6, 1)
   end
 end
 loadData()
@@ -186,6 +193,122 @@ local function prepare3D()
   end
 end
 
+-- ---------- replay de la vuelta ideal ----------
+-- Un auto fantasma (la forma de tu auto, semitransparente y teñido con el pedal de la referencia) recorre la vuelta
+-- de referencia a velocidad real sobre la trazada; la cámara lo sigue. Se corta solo si arrancás a manejar.
+local replay = { on = false, t = 0, d = 0, x = 0, y = 0, z = 0, fx = 0, fy = 0, fz = 1, thr = 0, brk = 0, lift = 0.35, sign = 1 }
+local camState = nil
+
+local function replayRef() return D[cfg.lineMode] or D.theory end
+
+local function ghostAt(time)
+  local r = replayRef()
+  local tt = r.t
+  local lo, hi = 1, N
+  while lo < hi do
+    local m = math.floor((lo + hi + 1) / 2)
+    if tt[m] <= time then lo = m else hi = m - 1 end
+  end
+  local i = lo
+  local j = i < N and i + 1 or 1
+  local t1 = i < N and tt[j] or r.tLap
+  local f = math.min(math.max((time - tt[i]) / math.max(t1 - tt[i], 1e-3), 0), 1)
+  local s1 = i < N and S[j] or D.length
+  replay.d = wrapD(S[i] + (s1 - S[i]) * f)
+  replay.x = X[i] + (X[j] - X[i]) * f
+  replay.z = Z[i] + (Z[j] - Z[i]) * f
+  replay.y = Y3[i] + (Y3[j] - Y3[i]) * f
+  replay.thr = r.thr[i] + (r.thr[j] - r.thr[i]) * f
+  replay.brk = r.brk[i] + (r.brk[j] - r.brk[i]) * f
+  -- dirección: de dos puntos antes a dos después, así gira suave
+  local a = (i - 3) % N + 1
+  local b = (j + 1) % N + 1
+  local fx, fy, fz = X[b] - X[a], Y3[b] - Y3[a], Z[b] - Z[a]
+  local l = math.sqrt(fx * fx + fy * fy + fz * fz)
+  if l > 1e-6 then replay.fx, replay.fy, replay.fz = fx / l, fy / l, fz / l end
+end
+
+local function replayStop()
+  replay.on = false
+  if camState and camState.cam then camState.cam:dispose() end
+  camState = nil
+end
+
+local function replayStart()
+  if not D then return end
+  if not Y3 then prepare3D() end
+  -- empieza donde está tu auto (en boxes, cerca de la largada)
+  local d0 = wrapD(car.splinePosition * D.length)
+  local r = replayRef()
+  replay.t = r.t[idxAt(d0)] or 0
+  -- altura del modelo sobre el asfalto y hacia dónde mira, copiadas de tu auto
+  local hit = vec3()
+  local from = vec3(car.position.x, car.position.y + 2, car.position.z)
+  local dist = physics.raycastTrack(from, vec3(0, -1, 0), 6, hit)
+  local bt = car.bodyTransform
+  replay.lift = dist >= 0 and math.min(math.max(bt.position.y - hit.y, 0), 1.5) or 0.35
+  replay.sign = (bt.look.x * car.look.x + bt.look.z * car.look.z) >= 0 and 1 or -1
+  replay.on = true
+  ghostAt(replay.t)
+  local cam, err = nil, 'sin acceso a la cámara'
+  if ac.grabCamera then cam, err = ac.grabCamera('Trazada: replay de la vuelta ideal') end
+  camState = { cam = cam, err = err, px = replay.x - replay.fx * 8, py = replay.y + 3, pz = replay.z - replay.fz * 8 }
+end
+
+function script.update(dt)
+  if not replay.on then return end
+  if car.speedKmh > 30 then replayStop() return end     -- arrancaste a manejar
+  local r = replayRef()
+  replay.t = (replay.t + dt * cfg.replaySpeed) % r.tLap
+  ghostAt(replay.t)
+  local cam = camState and camState.cam
+  if not cam then return end
+  local x, y, z, fx, fz = replay.x, replay.y, replay.z, replay.fx, replay.fz
+  local hl = math.sqrt(fx * fx + fz * fz)
+  if hl > 1e-6 then fx, fz = fx / hl, fz / hl end
+  -- se suaviza solo el rumbo (no la posición): la cámara queda siempre a la misma distancia, aun a 250 km/h
+  local k = 1 - math.exp(-dt * 4)
+  camState.hx = (camState.hx or fx) + (fx - (camState.hx or fx)) * k
+  camState.hz = (camState.hz or fz) + (fz - (camState.hz or fz)) * k
+  local hl2 = math.sqrt(camState.hx ^ 2 + camState.hz ^ 2)
+  local hx, hz = camState.hx / hl2, camState.hz / hl2
+  local back, up, ahead, aim = 7.5, 2.3, 8, 0.7
+  if cfg.replayCam == 'heli' then back, up, ahead, aim = 30, 45, 10, 0 end
+  camState.py = camState.py + (y + up - camState.py) * (1 - math.exp(-dt * 5))
+  camState.px, camState.pz = x - hx * back, z - hz * back
+  local dx, dy, dz = x + hx * ahead - camState.px, y + aim - camState.py, z + hz * ahead - camState.pz
+  local dl = math.sqrt(dx * dx + dy * dy + dz * dz)
+  cam.transform.position:set(camState.px, camState.py, camState.pz)
+  cam.transform.look:set(dx / dl, dy / dl, dz / dl)
+  cam.transform.up:set(0, 1, 0)
+end
+
+local ghostMesh = nil
+local ghostColor = rgbm(1, 1, 1, 0.55)
+local ghostParams = nil
+local function drawGhost()
+  if not ghostMesh then
+    ghostMesh = ac.SimpleMesh.carShape(0, true)
+    ghostParams = {
+      mesh = ghostMesh, transform = mat4x4.identity(), textures = {}, values = { gColor = ghostColor },
+      shader = [[float4 main(PS_IN pin) {
+        float g = dot(normalize(pin.NormalW), normalize(pin.PosC));
+        float rim = pow(1 - abs(g), 2);
+        return float4(gColor.rgb * (0.35 + 0.65 * rim) * gWhiteRefPoint, gColor.a * (0.4 + 0.6 * rim));
+      }]],
+    }
+  end
+  local c = PAL[pedalCode(replay.thr, replay.brk)]
+  ghostColor.r, ghostColor.g, ghostColor.b, ghostColor.mult = c.r, c.g, c.b, 0.6
+  local s = replay.sign
+  ghostParams.transform = mat4x4.look(vec3(replay.x, replay.y + replay.lift, replay.z),
+    vec3(replay.fx * s, replay.fy * s, replay.fz * s), vec3(0, 1, 0))
+  render.setBlendMode(render.BlendMode.AlphaBlend)
+  render.setDepthMode(render.DepthMode.Normal)
+  render.setCullMode(render.CullMode.None)
+  render.mesh(ghostParams)
+end
+
 local q3 = { vec3(), vec3(), vec3(), vec3() }
 local lineColor = rgbm(1, 1, 1, 1)
 local function quad(x1, y1, z1, x2, y2, z2, nx1, nz1, nx2, nz2, half, lift, color)
@@ -199,11 +322,13 @@ local function quad(x1, y1, z1, x2, y2, z2, nx1, nz1, nx2, nz2, half, lift, colo
 end
 
 function script.draw3D()
-  if not D or not cfg.line then return end
+  if not D then return end
+  if replay.on then drawGhost() end
+  if not cfg.line then return end
   if not Y3 then prepare3D() end
   local ref = D[cfg.lineMode] or D.theory
   local codes = ref.code
-  local d = wrapD(car.splinePosition * D.length)
+  local d = replay.on and replay.d or wrapD(car.splinePosition * D.length)
   local i0 = idxAt(wrapD(d - 12))
   local count = (idxAt(wrapD(d + cfg.lineAhead)) - i0) % N
   local half = cfg.lineWidth / 2
@@ -317,9 +442,10 @@ local function drawMap(p0, size, d, dt, ref, nextC)
   -- cámara: pista completa o siguiendo al auto (con giro según el rumbo)
   local baseAng = math.rad(D.rot or 0)
   local tAng, tcx, tcz, tsc
-  local pos = car.position
+  local pos = replay.on and { x = replay.x, z = replay.z } or car.position
+  local look = replay.on and { x = replay.fx, z = replay.fz } or car.look
   if cfg.follow then
-    tAng = cfg.headingUp and (-math.pi / 2 - math.atan2(car.look.z, car.look.x)) or baseAng
+    tAng = cfg.headingUp and (-math.pi / 2 - math.atan2(look.z, look.x)) or baseAng
     tsc = size.x / cfg.span
   else
     tAng = baseAng
@@ -358,7 +484,7 @@ local function drawMap(p0, size, d, dt, ref, nextC)
   -- el auto: anillo amarillo, relleno con lo que estás haciendo vos con los pedales
   local cp = proj(pos.x, pos.z):clone()
   ui.drawCircleFilled(cp, 11, rgbm(0.965, 0.788, 0.055, 0.18), 20)
-  ui.drawCircleFilled(cp, 6.5, PAL[pedalCode(car.gas * 100, car.brake * 100)], 16)
+  ui.drawCircleFilled(cp, 6.5, PAL[replay.on and pedalCode(replay.thr, replay.brk) or pedalCode(car.gas * 100, car.brake * 100)], 16)
   ui.drawCircle(cp, 6.5, C.accent, 16, 2.2)
 
   ui.popClipRect()
@@ -370,10 +496,26 @@ local function drawMap(p0, size, d, dt, ref, nextC)
   if pill('##view', cfg.follow and 'SEGUIR' or 'PISTA', p0 + vec2(size.x - 70, 8), 62, 20, false) then
     cfg.follow = not cfg.follow
   end
-  local lap = ref.lap
-  local note = string.format('ref %d:%06.3f', math.floor(lap / 60), lap % 60)
-  if ac.getCarID(0) ~= D.car then note = note .. ' · calculada para ' .. D.carName end
-  text(note, 10.5, p0 + vec2(9, size.y - 18), C.faint)
+  -- replay: arrancar / parar, velocidad y cámara
+  if pill('##replay', replay.on and '■ PARAR' or '▶ REPLAY', p0 + vec2(size.x - 86, size.y - 28), 78, 20, replay.on) then
+    if replay.on then replayStop() else replayStart() end
+  end
+  if replay.on then
+    if pill('##rspeed', cfg.replaySpeed == 0.5 and '½×' or cfg.replaySpeed == 2 and '2×' or '1×', p0 + vec2(8, size.y - 28), 40, 20, false) then
+      cfg.replaySpeed = cfg.replaySpeed == 1 and 2 or cfg.replaySpeed == 2 and 0.5 or 1
+    end
+    if pill('##rcam', cfg.replayCam == 'heli' and 'ARRIBA' or 'ATRÁS', p0 + vec2(52, size.y - 28), 66, 20, false) then
+      cfg.replayCam = cfg.replayCam == 'heli' and 'chase' or 'heli'
+    end
+    if camState and not camState.cam then
+      text('la cámara está tomada por otra app', 10, p0 + vec2(9, size.y - 44), C.faint)
+    end
+  else
+    local lap = ref.lap
+    local note = string.format('ref %d:%06.3f', math.floor(lap / 60), lap % 60)
+    if ac.getCarID(0) ~= D.car then note = note .. ' · calculada para ' .. D.carName end
+    text(note, 10.5, p0 + vec2(9, size.y - 18), C.faint)
+  end
 end
 
 local function drawStrip(p0, w, h, d, ref, nextC)
@@ -428,8 +570,8 @@ function script.windowMain(dt)
   C.bg.mult = cfg.opacity
   C.panel.mult = math.min(1, cfg.opacity * 1.06)
 
-  local ref = D[cfg.mode] or D.human
-  local d = wrapD(car.splinePosition * D.length)
+  local ref = replay.on and replayRef() or D[cfg.mode] or D.human
+  local d = replay.on and replay.d or wrapD(car.splinePosition * D.length)
   local c, gap, inside = cornerState(d)
   local nc, ngap = nextAhead(d)
 
@@ -546,6 +688,20 @@ function script.windowSettings()
   cfg.lineAlpha = ui.slider('##lineAlpha', cfg.lineAlpha * 100, 15, 100, 'Opacidad: %.0f %%') / 100
   if ui.checkbox('Barra roja en cada punto de frenada', cfg.brakeBars) then cfg.brakeBars = not cfg.brakeBars end
   ui.textWrapped('Apagá la línea ideal de Assetto Corsa (Ayudas → Línea ideal) para no ver dos.')
+  ui.offsetCursorY(6)
+  ui.text('Replay de la vuelta ideal')
+  if ui.button(replay.on and 'Parar replay' or 'Ver replay (usa la referencia de la línea)') then
+    if replay.on then replayStop() else replayStart() end
+  end
+  if ui.radioButton('½×', cfg.replaySpeed == 0.5) then cfg.replaySpeed = 0.5 end
+  ui.sameLine()
+  if ui.radioButton('1×', cfg.replaySpeed == 1) then cfg.replaySpeed = 1 end
+  ui.sameLine()
+  if ui.radioButton('2×', cfg.replaySpeed == 2) then cfg.replaySpeed = 2 end
+  if ui.radioButton('Cámara atrás', cfg.replayCam == 'chase') then cfg.replayCam = 'chase' end
+  ui.sameLine()
+  if ui.radioButton('Cámara arriba', cfg.replayCam == 'heli') then cfg.replayCam = 'heli' end
+  ui.textWrapped('Quedate quieto en boxes: si arrancás a manejar el replay se corta solo.')
   ui.offsetCursorY(6)
   ui.text('Caja')
   cfg.opacity = ui.slider('##opacity', cfg.opacity * 100, 0, 100, 'Opacidad del fondo: %.0f %%') / 100

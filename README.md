@@ -45,7 +45,8 @@ Tus datos quedan en `recordings/` y `mis-vueltas.js`, que no se suben al repo.
 - la frenada en grande ("FRENÁ A 70 m", con la cuenta regresiva y **¡FRENÁ!** al llegar), o "LEVANTÁ" / "A FONDO" si no hace falta frenar;
 - la velocidad y la marcha ideales en el punto donde estás;
 - una franja con los próximos 300 m de pedales;
-- la **trazada teórica dibujada sobre el asfalto**, como la línea ideal de Assetto Corsa pero con los colores de los pedales (verde, gris, rojo con su intensidad) y una barra roja cruzada en cada punto de frenada. Carga sola con el juego, así que se ve sin abrir la app; en la configuración se elige teórica o humana, el ancho, cuánto se dibuja hacia adelante y la opacidad. Conviene apagar la línea ideal del juego para no ver dos.
+- la **trazada teórica dibujada sobre el asfalto**, como la línea ideal de Assetto Corsa pero con los colores de los pedales (verde, gris, rojo con su intensidad) y una barra roja cruzada en cada punto de frenada. Carga sola con el juego, así que se ve sin abrir la app; en la configuración se elige teórica o humana, el ancho, cuánto se dibuja hacia adelante y la opacidad. Conviene apagar la línea ideal del juego para no ver dos;
+- un **replay de la vuelta ideal**: con el botón ▶ REPLAY del mapa, un auto fantasma (la forma de tu auto, semitransparente y teñido con el pedal de la referencia) recorre la vuelta teórica a velocidad real sobre la trazada, con la cámara siguiéndolo desde atrás o desde arriba, a ½×, 1× o 2×. El panel acompaña al fantasma. Se usa parado en boxes y se corta solo si arrancás a manejar.
 
 Se puede elegir referencia humana o teórica, mapa siguiendo al auto (gira con el rumbo) o pista completa, y la opacidad de la caja desde la configuración de la app.
 
