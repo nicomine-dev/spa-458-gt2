@@ -36,6 +36,16 @@ Con una sesión grabada aparece la versión **Tuya**: el punto recorre tu línea
 
 Tus datos quedan en `recordings/` y `mis-vueltas.js`, que no se suben al repo.
 
+## Replay artificial para Assetto Corsa
+
+`tools/make_replay.py` escribe un replay de verdad (`.acreplay`, versión 16) que se abre desde el menú de replays del juego: una "carrera" de 458 GT2 en Spa con largada lanzada entre la **vuelta teórica**, la **vuelta humana** y **tu mejor vuelta grabada** (con tu línea real).
+
+```sh
+python tools/make_replay.py   # usa tu último replay de Spa con el 458 como plantilla y tu última sesión grabada
+```
+
+Toma de un replay tuyo real el encabezado, los datos de pista y la geometría de las ruedas, y escribe cada cuadro de cero: posición, rotación, ruedas (con dirección y giro), velocidad, rpm, marcha, pedales y tiempos de vuelta. El formato sale del parser de [abchouhan/acreplay-parser](https://github.com/abchouhan/acreplay-parser) y se verificó contra replays reales (reescribir un replay sin cambios da el mismo archivo byte por byte). `tools/acreplay.py` lee y escribe el formato.
+
 ## App para Assetto Corsa (CSP)
 
 `cm-app/Trazada` es una app de Lua para Custom Shaders Patch. En carrera muestra:
